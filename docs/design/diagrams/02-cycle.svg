@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 486" width="880" height="486" role="img" aria-label="Последовательность обмена: регистрация, аренда, продление, находка номером блока и смещением, проверка на мастере">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <rect class="bx" x="60" y="18" width="200" height="42" rx="3"/>
+  <text class="ts" x="160" y="45" text-anchor="middle">работник</text>
+  <rect class="bx" x="620" y="18" width="200" height="42" rx="3"/>
+  <text class="ts" x="720" y="45" text-anchor="middle">мастер</text>
+  <line class="lnl" x1="160" y1="60" x2="160" y2="470"/>
+  <line class="lnl" x1="720" y1="60" x2="720" y2="470"/>
+  <line class="ln" x1="160" y1="100" x2="716" y2="100" marker-end="url(#ar)"/>
+  <text class="tm" x="440" y="92" text-anchor="middle">POST /register</text>
+  <line class="ln" x1="720" y1="150" x2="164" y2="150" marker-end="url(#ar)"/>
+  <text class="tm" x="440" y="142" text-anchor="middle">seed · блоки 400–499 · фильтры · аренда 60 с</text>
+  <rect class="bxp" x="60" y="176" width="200" height="40" rx="3"/>
+  <text class="tf" x="160" y="201" text-anchor="middle">считает</text>
+  <line class="ln" x1="160" y1="252" x2="716" y2="252" marker-end="url(#ar)"/>
+  <text class="tm" x="440" y="244" text-anchor="middle">POST /heartbeat · 1.2 млрд проверено</text>
+  <line class="ln" x1="720" y1="296" x2="164" y2="296" marker-end="url(#ar)"/>
+  <text class="tms" x="440" y="288" text-anchor="middle">аренда продлена</text>
+  <line class="lns" x1="160" y1="348" x2="716" y2="348" marker-end="url(#ars)"/>
+  <text class="tsig" x="440" y="340" text-anchor="middle">POST /found · block 431 · offset 88192</text>
+  <rect class="bxs" x="576" y="368" width="288" height="62" rx="3"/>
+  <text class="tsig" x="596" y="392">выводит ключ из своего seed</text>
+  <text class="tsig" x="596" y="414">строит адрес · сверяет с фильтром</text>
+  <line class="lns" x1="720" y1="456" x2="164" y2="456" marker-end="url(#ars)"/>
+  <text class="tsig" x="400" y="448" text-anchor="middle">принято · записано</text>
+</svg>

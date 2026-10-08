@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 410" width="880" height="410" role="img" aria-label="Мастер держит очередь диапазонов, фильтры и хранилище; работники подключаются исходящими соединениями">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <rect class="bx" x="210" y="24" width="460" height="176" rx="3"/>
+  <text class="ts" x="234" y="52">мастер</text>
+  <text class="tms" x="234" y="72">onion-gen master --listen :8080</text>
+  <line class="ln" x1="234" y1="86" x2="646" y2="86"/>
+  <text class="t" x="234" y="110">очередь диапазонов блоков</text>
+  <text class="t" x="234" y="134">набор фильтров</text>
+  <text class="t" x="234" y="158">хранилище находок · раскладка tor</text>
+  <text class="t" x="234" y="182">состояние флота</text>
+  <rect class="bxp" x="24" y="316" width="216" height="70" rx="3"/>
+  <text class="ts" x="44" y="344">работник 1</text>
+  <text class="tms" x="44" y="366">GPU · 960 млн/с</text>
+  <rect class="bxp" x="332" y="316" width="216" height="70" rx="3"/>
+  <text class="ts" x="352" y="344">работник 2</text>
+  <text class="tms" x="352" y="366">CPU · 67 млн/с</text>
+  <rect class="bxp" x="640" y="316" width="216" height="70" rx="3"/>
+  <text class="ts" x="660" y="344">работник N</text>
+  <text class="tms" x="660" y="366">…</text>
+  <path class="ln" d="M 132 316 L 132 250 L 300 250 L 300 200" marker-end="url(#ar)"/>
+  <path class="ln" d="M 440 316 L 440 200" marker-end="url(#ar)"/>
+  <path class="ln" d="M 748 316 L 748 250 L 580 250 L 580 200" marker-end="url(#ar)"/>
+  <text class="tm"  x="452" y="240">аренда · продление · находка</text>
+  <text class="tms" x="452" y="292">исходящее соединение</text>
+  <text class="tms" x="24" y="232">входящих</text>
+  <text class="tms" x="24" y="250">соединений</text>
+  <text class="tms" x="24" y="268">у работника нет</text>
+</svg>

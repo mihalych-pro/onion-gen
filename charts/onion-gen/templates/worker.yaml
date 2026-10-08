@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: {{ .Values.worker.kind }}
+metadata:
+  name: {{ include "onion-gen.fullname" . }}-worker
+  labels:
+    {{- include "onion-gen.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  {{- if eq .Values.worker.kind "StatefulSet" }}
+  serviceName: {{ include "onion-gen.fullname" . }}-worker
+  podManagementPolicy: Parallel
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "onion-gen.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "onion-gen.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: {{ include "onion-gen.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "onion-gen.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - --compute
+            - {{ .Values.worker.compute | quote }}
+            {{- if gt (int .Values.worker.threads) 0 }}
+            - --threads
+            - {{ .Values.worker.threads | quote }}
+            {{- end }}
+            - --out-dir
+            - /buffer
+            - worker
+            - --master
+            - http://{{ include "onion-gen.fullname" . }}-master:{{ .Values.master.service.port }}
+            - --endpoint
+            - 0.0.0.0:{{ .Values.worker.endpointPort }}
+            - --buffer-limit
+            - {{ .Values.worker.bufferLimit | quote }}
+            # No --filter: the set comes from the master, which is the point of
+            # having one. No --limit either: a worker that reached a limit would
+            # exit zero, be restarted, and do it again for ever.
+          env:
+            # The fleet view names workers by this, and a pod name is what an
+            # operator recognises.
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.worker.endpointPort }}
+          livenessProbe:
+            # Deliberately blind to the master. A worker whose master has gone
+            # is finishing its range and keeping its finds; restarting it throws
+            # both away, and an outage would do that to every worker at once.
+            httpGet:
+              path: /health
+              port: metrics
+            {{- toYaml .Values.worker.livenessProbe | nindent 12 }}
+          readinessProbe:
+            # This one does depend on the master: a pod with nowhere to get work
+            # is not a worker, and a rollout should stop rather than replace the
+            # fleet with such pods.
+            httpGet:
+              path: /ready
+              port: metrics
+            {{- toYaml .Values.worker.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: buffer
+              mountPath: /buffer
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if ne .Values.worker.kind "StatefulSet" }}
+        - name: buffer
+          # Finds the master has not taken yet. An emptyDir keeps them across a
+          # container restart but not across replacing the pod, so a pod lost
+          # during a master outage takes its unsent finds with it. Set
+          # `worker.kind: StatefulSet` to give each worker a volume of its own.
+          emptyDir: {}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if eq .Values.worker.kind "StatefulSet" }}
+  volumeClaimTemplates:
+    - metadata:
+        name: buffer
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.worker.buffer.size }}
+        {{- with .Values.worker.buffer.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+  {{- end }}

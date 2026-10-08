@@ -1,0 +1,140 @@
+# The same checks and artefacts as .github/workflows/ci.yml.
+#
+# GitLab's shared runners are Linux, so the tests run on Linux only here; zig
+# cross-builds all six platforms from the same runner. Native Windows and macOS
+# test runs live in the GitHub workflow.
+
+stages: [check, build, publish]
+
+variables:
+  CARGO_TERM_COLOR: always
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+default:
+  # The image pins an older toolchain than the manifest asks for, so every job
+  # switches to stable first.
+  image: ghcr.io/rust-cross/cargo-zigbuild:latest
+  before_script:
+    - rustup toolchain install stable --profile minimal --component clippy,rustfmt
+    - rustup default stable
+    - rustc --version
+    # The build script compiles the CUDA kernel, which needs the nightly
+    # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
+    # directory, rustup reads the file, so the version lives in one place.
+    - (cd cuda-kernel && rustup toolchain install)
+  cache:
+    key:
+      files: [Cargo.lock]
+    paths:
+      - .cargo/registry/
+      - .cargo/git/
+      - target/
+      - cuda-kernel/target/
+
+check:
+  stage: check
+  script:
+    - cargo fmt --check
+    - cargo clippy --all-targets --release -- -D warnings
+    - cargo test --release
+
+binaries:
+  stage: build
+  script:
+    - |
+      rustup target add \
+        x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+        x86_64-apple-darwin aarch64-apple-darwin \
+        x86_64-pc-windows-gnu aarch64-pc-windows-gnullvm
+    # Named for the platform they run on rather than for the triple that
+    # produced them. The `.2.17` suffix on the linux targets sets the oldest
+    # glibc the binary will run against.
+    - |
+      set -euo pipefail
+      mkdir -p dist
+      build() {  # <rust triple> <output name>
+        cargo zigbuild --release --target "$1"
+        triple="${1%%.*}"
+        src="target/${triple}/release/onion-gen"
+        [ -f "$src" ] || src="${src}.exe"
+        cp "$src" "dist/$2"
+      }
+      build x86_64-unknown-linux-gnu.2.17   onion-gen-linux-amd64
+      build aarch64-unknown-linux-gnu.2.17  onion-gen-linux-arm64
+      build x86_64-apple-darwin             onion-gen-darwin-amd64
+      build aarch64-apple-darwin            onion-gen-darwin-arm64
+      build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
+      build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
+    - cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+  artifacts:
+    name: onion-gen-binaries
+    expire_in: 1 week
+    paths:
+      - dist/
+
+kernel:
+  stage: build
+  script:
+    # Nightly is needed by the kernel: the `ptx-kernel` ABI and inline assembly
+    # for this architecture are both still unstable. The host stays on stable.
+    # The toolchain is already in place from before_script.
+    - cd cuda-kernel
+    - cargo build --release --target nvptx64-nvidia-cuda
+    # Two properties a change to the kernel can silently lose: the widening
+    # multiply has to reach the PTX, and nothing may spill — a stack frame means
+    # the point lives in off-chip memory, which costs a third of the throughput.
+    - |
+      set -euo pipefail
+      ptx=target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+      test -s "$ptx"
+      grep -c 'mul.wide.u32\|mad.wide.u32' "$ptx"
+      for k in chain_steps chain_reduce; do
+        spills=$(awk "/\\.visible \\.entry $k/,/^}/" "$ptx" | grep -c 'ld.local\|st.local' || true)
+        echo "local accesses in $k: $spills"
+        test "$spills" -le 64
+      done
+  artifacts:
+    name: onion-gen-ptx
+    expire_in: 1 week
+    paths:
+      - cuda-kernel/target/nvptx64-nvidia-cuda/release/*.ptx
+
+container:
+  stage: publish
+  needs: [check, kernel, binaries]
+  image: docker:28-cli
+  services:
+    - docker:28-dind
+  # The rust toolchain and its cache mean nothing in a docker image.
+  before_script: []
+  cache: []
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker buildx create --use --driver docker-container
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Published only from the default branch, so that a branch cannot overwrite
+    # what `latest` points at. Elsewhere the image is built and thrown away.
+    - |
+      set -eu
+      if [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ]; then
+        docker buildx build --platform linux/amd64,linux/arm64 --push \
+          -t "$CI_REGISTRY_IMAGE:latest" \
+          -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+      else
+        docker buildx build --platform linux/amd64,linux/arm64 .
+      fi
+
+tagged-release:
+  stage: publish
+  needs: [binaries]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script: []
+  cache: []
+  script:
+    - echo "Release $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: "onion-gen $CI_COMMIT_TAG"

@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "onion-gen.fullname" . }}-master
+  labels:
+    {{- include "onion-gen.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, not a rolling update. The store is ReadWriteOnce, so a second
+    # pod could not mount it while the first still held it and the rollout would
+    # sit there for ever. One master is all there is, and the seconds it is away
+    # cost nothing: workers finish the range they already hold.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "onion-gen.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: master
+  template:
+    metadata:
+      labels:
+        {{- include "onion-gen.labels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+    spec:
+      serviceAccountName: {{ include "onion-gen.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: master
+          image: {{ include "onion-gen.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            {{- include "onion-gen.filterArgs" . | nindent 12 }}
+            - master
+            - --listen
+            - 0.0.0.0:{{ .Values.master.service.port }}
+            - --store
+            - /keys
+            {{- if and .Values.master.database.enabled (not .Values.master.database.existingSecret) }}
+            - --db
+            - {{ .Values.master.database.url | quote }}
+            {{- end }}
+            - --lease-seconds
+            - {{ .Values.master.leaseSeconds | quote }}
+            - --lease-work-seconds
+            - {{ .Values.master.leaseWorkSeconds | quote }}
+          {{- $secretSeed := .Values.master.seed.existingSecret }}
+          {{- $secretDb := and .Values.master.database.enabled .Values.master.database.existingSecret }}
+          {{- if or $secretSeed $secretDb }}
+          env:
+            # Through the environment rather than the command line: a process's
+            # arguments are readable by anything that can list processes on the
+            # node. The seed reproduces every key the fleet will ever find, and
+            # the connection string carries a password.
+            {{- if $secretSeed }}
+            - name: ONION_GEN_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretSeed }}
+                  key: {{ .Values.master.seed.key }}
+            {{- end }}
+            {{- if $secretDb }}
+            - name: ONION_GEN_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.master.database.existingSecret }}
+                  key: {{ .Values.master.database.key }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.master.service.port }}
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: http
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/status
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.master.resources | nindent 12 }}
+          volumeMounts:
+            - name: store
+              mountPath: /keys
+            {{- if .Values.filtersConfigMap.name }}
+            - name: filters
+              mountPath: /etc/onion-gen
+              readOnly: true
+            {{- end }}
+            # The root filesystem is read-only, so anything that writes needs
+            # somewhere of its own.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: store
+          {{- if .Values.master.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "onion-gen.fullname" . }}-store
+          {{- else }}
+          # Without a volume the keys live and die with the pod. Useful for a
+          # trial run and for nothing else.
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.filtersConfigMap.name }}
+        - name: filters
+          configMap:
+            name: {{ .Values.filtersConfigMap.name }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.master.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.master.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.master.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

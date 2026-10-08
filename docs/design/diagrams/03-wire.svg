@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" width="880" height="340" role="img" aria-label="По проводу идут номер блока и смещение, а не секретный ключ; мастер выводит ключ сам и потому проверяет находку">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <rect class="bxp" x="24" y="40" width="250" height="150" rx="3"/>
+  <text class="ts" x="44" y="68">у работника есть</text>
+  <text class="tms" x="44" y="96">seed (выдан мастером)</text>
+  <text class="tms" x="44" y="118">block 431</text>
+  <text class="tms" x="44" y="140">offset 88192</text>
+  <text class="tms" x="44" y="162">секретный ключ, 64 байта</text>
+  <rect class="bxp" x="606" y="40" width="250" height="150" rx="3"/>
+  <text class="ts" x="626" y="68">у мастера есть</text>
+  <text class="tms" x="626" y="96">seed (он его и выдал)</text>
+  <text class="tms" x="626" y="118">набор фильтров</text>
+  <text class="tms" x="626" y="140">аренда работника</text>
+  <line class="lns" x1="278" y1="104" x2="600" y2="104" marker-end="url(#ars)"/>
+  <rect class="bxs" x="318" y="76" width="244" height="30" rx="3"/>
+  <text class="tsig" x="440" y="96" text-anchor="middle">{ block: 431, offset: 88192 }</text>
+  <line class="lnd" x1="278" y1="164" x2="600" y2="164"/>
+  <text class="tms" x="440" y="158" text-anchor="middle">64 байта ключа — не идут</text>
+  <rect class="bx" x="180" y="232" width="520" height="86" rx="3"/>
+  <text class="ts" x="204" y="260">Следствие, ради которого это и сделано</text>
+  <text class="t" x="204" y="286">Мастер не принимает находку на веру. Он выводит ключ,</text>
+  <text class="t" x="204" y="306">строит адрес и сверяет с фильтром — подделать нечего.</text>
+</svg>

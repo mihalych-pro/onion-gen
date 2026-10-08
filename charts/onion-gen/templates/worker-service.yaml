@@ -1,0 +1,22 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "onion-gen.fullname" . }}-worker
+  labels:
+    {{- include "onion-gen.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  # Headless: nothing routes to a worker, and this exists only so Prometheus
+  # has endpoints to find. A worker still accepts no instruction over it — the
+  # endpoint answers GET and nothing else.
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: {{ .Values.worker.endpointPort }}
+      targetPort: metrics
+  selector:
+    app.kubernetes.io/name: {{ include "onion-gen.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: worker
+{{- end }}

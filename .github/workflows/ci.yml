@@ -1,0 +1,206 @@
+# Build, test and lint on every target platform, then produce binaries and an
+# image.
+#
+# Three jobs on purpose. `check` runs natively on each platform, because that is
+# the only way to exercise the code paths chosen by `cfg(windows)` and to run
+# the tests where they will actually run. `cross` then builds all six binaries
+# from one Linux runner, which zig makes possible by carrying the libc stubs for
+# every target. `image` builds the
+# container for both Linux architectures and publishes it as `latest`, but only
+# from main.
+#
+# No task runner here. The Taskfile is for a person at a keyboard; a pipeline
+# that calls it would be one indirection away from what it actually runs, and
+# the two would drift.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The build script compiles the CUDA kernel, which needs the nightly
+      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
+      # directory, rustup reads the file, so the version lives in one place.
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --release -- -D warnings
+
+      - name: Tests
+        run: cargo test --release
+
+  kernel:
+    name: GPU kernel to PTX
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The kernel needs nightly whatever it is written in: both the
+      # `ptx-kernel` ABI and inline assembly for this architecture are still
+      # unstable on 1.99. The host stays on stable — they are separate crates
+      # for exactly this reason. The version comes from the kernel's own
+      # toolchain file, which rustup reads when run from that directory.
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile the kernel
+        working-directory: cuda-kernel
+        run: cargo build --release --target nvptx64-nvidia-cuda
+
+      # No CUDA toolkit on this runner, and none is needed. Two properties are
+      # guarded: the widening multiply has to reach the PTX, and nothing may
+      # spill — a stack frame means the point lives in off-chip memory, which
+      # costs a third of the throughput.
+      - name: The PTX carries the instructions it should and spills nothing
+        working-directory: cuda-kernel
+        run: |
+          ptx=target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+          test -s "$ptx"
+          grep -c 'mul.wide.u32\|mad.wide.u32' "$ptx"
+          for k in chain_steps chain_reduce; do
+            spills=$(awk "/\\.visible \\.entry $k/,/^}/" "$ptx" \
+              | grep -c 'ld.local\|st.local' || true)
+            echo "local accesses in $k: $spills"
+            test "$spills" -le 64
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onion-gen-ptx
+          if-no-files-found: error
+          path: cuda-kernel/target/nvptx64-nvidia-cuda/release/*.ptx
+
+  cross:
+    name: binaries for every platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-unknown-linux-gnu,
+            aarch64-unknown-linux-gnu,
+            x86_64-apple-darwin,
+            aarch64-apple-darwin,
+            x86_64-pc-windows-gnu,
+            aarch64-pc-windows-gnullvm
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The build script compiles the CUDA kernel, which needs the nightly
+      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
+      # directory, rustup reads the file, so the version lives in one place.
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      # Named for the platform they run on rather than for the triple that
+      # produced them: somebody downloading one of six files should not have to
+      # know what `aarch64-pc-windows-gnullvm` is to work out whether it is the
+      # one for their laptop.
+      #
+      # The `.2.17` suffix on the linux targets sets the oldest glibc the binary
+      # will run against, which is CentOS 7.
+      - name: Build every target
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {  # <rust triple> <output name>
+            echo "::group::$2"
+            cargo zigbuild --release --target "$1"
+            triple="${1%%.*}"
+            src="target/${triple}/release/onion-gen"
+            [ -f "$src" ] || src="${src}.exe"
+            cp "$src" "dist/$2"
+            echo "::endgroup::"
+          }
+          build x86_64-unknown-linux-gnu.2.17   onion-gen-linux-amd64
+          build aarch64-unknown-linux-gnu.2.17  onion-gen-linux-arm64
+          build x86_64-apple-darwin             onion-gen-darwin-amd64
+          build aarch64-apple-darwin            onion-gen-darwin-arm64
+          build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
+          build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onion-gen-binaries
+          if-no-files-found: error
+          path: dist/*
+
+  image:
+    name: container image
+    # Only from main: a pull request gets its image built but not published, so
+    # that a branch cannot overwrite what `latest` points at.
+    needs: [check, kernel, cross]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

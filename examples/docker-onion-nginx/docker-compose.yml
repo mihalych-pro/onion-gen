@@ -1,0 +1,38 @@
+# Example: an onion service on generated keys, with nginx serving the site.
+#
+# Keys are MOUNTED, not copied into the image: a secret in an image layer
+# spreads to everyone who pulls it and stays in the registry history forever.
+services:
+  tor:
+    build:
+      context: ./tor
+    volumes:
+      # The directory the generator produced. Read-only: the container copies the
+      # keys to itself and sets ownership, leaving the source untouched.
+      - ./keys:/keys-ro:ro
+      - ./tor/torrc:/etc/tor/torrc:ro
+      - tor-data:/var/lib/tor/data
+    depends_on:
+      - nginx
+    networks:
+      - onion
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/onion.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./site:/var/www/onion:ro
+    networks:
+      - onion
+    # Nothing is published outward: the site is reachable only via the onion service.
+    # Opening a port on the host would make the same content directly reachable,
+    # trivially linking the onion address to your server.
+    expose:
+      - "8080"
+
+volumes:
+  tor-data:
+
+networks:
+  onion:
+    driver: bridge

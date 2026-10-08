@@ -1,0 +1,52 @@
+# A fleet on one machine: one master, as many workers as asked for.
+#
+#   docker compose up --scale worker=4
+#
+# To run a local build instead, replace the image with `onion-gen:latest` and
+# build it first with `docker build -t onion-gen:latest .`.
+services:
+  master:
+    image: ghcr.io/mihalych-pro/onion-gen:latest
+    command:
+      - --filter
+      - abcde
+      - master
+      - --listen
+      - 0.0.0.0:8080
+      - --store
+      - /keys
+    restart: unless-stopped
+    # The only published port: a worker never accepts a connection about work.
+    ports:
+      - "8080:8080"
+    volumes:
+      # The found keys. A named volume, not the container layer: losing them
+      # cannot be undone.
+      - keys:/keys
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/onion-gen", "--version"]
+      interval: 30s
+
+  worker:
+    image: ghcr.io/mihalych-pro/onion-gen:latest
+    restart: unless-stopped
+    depends_on:
+      - master
+    command:
+      - --compute
+      - cpu
+      - --out-dir
+      - /keys
+      - worker
+      - --master
+      - http://master:8080
+      - --endpoint
+      - 0.0.0.0:9100
+    volumes:
+      # Finds the master has not taken yet. Normally empty; keeps them across a
+      # restart during an outage.
+      - unsent:/keys
+
+volumes:
+  keys:
+  unsent:

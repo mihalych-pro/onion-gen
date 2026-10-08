@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 330" width="880" height="330" role="img" aria-label="Мастер недоступен: работник досчитывает диапазон, складывает находку в буфер на диске и досылает при восстановлении связи">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <rect class="bxp" x="24" y="30" width="190" height="56" rx="3"/>
+  <text class="ts" x="44" y="54">нашёл ключ</text>
+  <text class="tms" x="44" y="74">block 431 · offset 88192</text>
+  <line class="ln" x1="214" y1="58" x2="286" y2="58" marker-end="url(#ar)"/>
+  <rect class="bxw" x="292" y="30" width="216" height="56" rx="3"/>
+  <text class="twrn" x="312" y="54">POST /found</text>
+  <text class="twrn" x="312" y="74">мастер не отвечает</text>
+  <path class="ln" d="M 400 86 L 400 126" marker-end="url(#ar)"/>
+  <rect class="bx" x="292" y="132" width="216" height="56" rx="3"/>
+  <text class="ts" x="312" y="156">буфер на диске</text>
+  <text class="tms" x="312" y="176">несданные находки</text>
+  <path class="lnd" d="M 292 160 L 220 160 L 220 104 L 286 104" marker-end="url(#ar)"/>
+  <text class="tms" x="150" y="140">повтор</text>
+  <path class="lns" d="M 508 160 L 600 160 L 600 82" marker-end="url(#ars)"/>
+  <text class="tsig" x="616" y="132">мастер ответил</text>
+  <rect class="bxs" x="560" y="30" width="290" height="52" rx="3"/>
+  <text class="tsig" x="580" y="52">всё несданное уходит разом</text>
+  <text class="tsig" x="580" y="72">буфер пуст</text>
+  <rect class="bxp" x="24" y="230" width="826" height="72" rx="3"/>
+  <text class="ts" x="48" y="256">Пока мастера нет</text>
+  <text class="t" x="48" y="280">Работник досчитывает взятый диапазон до конца и нового не берёт: брать самовольно —</text>
+  <text class="t" x="48" y="298">значит рисковать пересечением с тем, кому мастер этот диапазон уже отдал.</text>
+</svg>

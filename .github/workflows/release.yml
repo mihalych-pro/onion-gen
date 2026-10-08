@@ -1,0 +1,118 @@
+# What a tag produces: six binaries, their checksums, and a published image.
+#
+# Separate from CI because it is triggered by a tag rather than a push, and
+# because what it publishes is permanent. CI may be re-run; a release may not.
+#
+# No task runner here either. The Taskfile is for a person at a keyboard.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  binaries:
+    name: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-unknown-linux-gnu,
+            aarch64-unknown-linux-gnu,
+            x86_64-apple-darwin,
+            aarch64-apple-darwin,
+            x86_64-pc-windows-gnu,
+            aarch64-pc-windows-gnullvm
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # The build script compiles the CUDA kernel, which needs the nightly
+      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
+      # directory, rustup reads the file, so the version lives in one place.
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      # Named for the platform they run on, not for the triple that produced
+      # them. Somebody choosing between six files should not have to know what
+      # `aarch64-pc-windows-gnullvm` means to find the one for their laptop.
+      - name: Build every target
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {  # <rust triple> <output name>
+            echo "::group::$2"
+            cargo zigbuild --release --target "$1"
+            triple="${1%%.*}"
+            src="target/${triple}/release/onion-gen"
+            [ -f "$src" ] || src="${src}.exe"
+            cp "$src" "dist/$2"
+            echo "::endgroup::"
+          }
+          build x86_64-unknown-linux-gnu.2.17   onion-gen-linux-amd64
+          build aarch64-unknown-linux-gnu.2.17  onion-gen-linux-arm64
+          build x86_64-apple-darwin             onion-gen-darwin-amd64
+          build aarch64-apple-darwin            onion-gen-darwin-arm64
+          build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
+          build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The tag without its leading `v`, so that the image reads
+      # `onion-gen:0.1.0` the way a chart's appVersion does.
+      - name: Work out the version
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.value }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

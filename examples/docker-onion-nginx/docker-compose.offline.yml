@@ -1,0 +1,10 @@
+# An override for checking WITHOUT publishing the service to the Tor network.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.offline.yml up
+#
+# tor reads the key, creates hostname and stops at bootstrap without announcing
+# a descriptor. Enough to confirm that the right key is mounted.
+services:
+  tor:
+    volumes:
+      - ./tor/torrc.offline:/etc/tor/torrc:ro

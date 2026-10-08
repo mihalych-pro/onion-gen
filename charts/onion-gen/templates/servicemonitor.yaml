@@ -1,0 +1,29 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{- range $component := list "master" "worker" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "onion-gen.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "onion-gen.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+    {{- with $.Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # Two monitors rather than one. The master knows the shape of the fleet —
+  # leases out, finds accepted, positions refused — and a worker knows its own
+  # hardware and how many finds it is holding because the master would not take
+  # them. Neither forwards the other's numbers, so both are scraped.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "onion-gen.name" $ }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  endpoints:
+    - port: {{ if eq $component "master" }}http{{ else }}metrics{{ end }}
+      path: /metrics
+      interval: {{ $.Values.serviceMonitor.interval }}
+{{- end }}
+{{- end }}

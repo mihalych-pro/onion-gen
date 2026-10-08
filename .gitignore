@@ -1,0 +1,31 @@
+.DS_Store
+
+# Rust build output, at any level: the cuda-kernel crate has its own.
+target/
+
+# The compiled CUDA kernel. Built from cuda-kernel/ on every build, so a copy
+# in the repository could only ever be the stale one.
+src/gpu/cuda-kernel.ptx
+
+# NEON microbenchmark, compiled from fe_mul_bench.c
+scripts/bench/neon/fe_mul_bench
+
+# Reference implementations cloned for a comparison, and whatever a comparison
+# builds. All of it is fetched again rather than kept.
+/build/
+/compare/
+
+# Found keys: one directory per address, or a --db database. Never committed -
+# these are secret keys.
+/out/
+*.onion/
+*.db
+*.db-wal
+*.db-shm
+
+# Machine addresses used by the ship tasks. Never committed.
+.env
+
+# Local editor and agent settings.
+.idea/
+.vscode/

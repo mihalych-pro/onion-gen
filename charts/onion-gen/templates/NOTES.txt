@@ -1,0 +1,38 @@
+{{ include "onion-gen.fullname" . }} is installed.
+
+  Master:  {{ include "onion-gen.fullname" . }}-master:{{ .Values.master.service.port }}
+  Workers: {{ .Values.worker.replicas }} ({{ .Values.worker.kind }})
+
+Watch the fleet:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward \
+    svc/{{ include "onion-gen.fullname" . }}-master {{ .Values.master.service.port }}:{{ .Values.master.service.port }}
+  curl localhost:{{ .Values.master.service.port }}/v1/status
+
+Collect the keys:
+
+  kubectl --namespace {{ .Release.Namespace }} exec deploy/{{ include "onion-gen.fullname" . }}-master -- \
+    tar cf - -C /keys . | tar xf - -C ./keys
+
+Scale:
+
+  kubectl --namespace {{ .Release.Namespace }} scale {{ lower .Values.worker.kind }}/{{ include "onion-gen.fullname" . }}-worker --replicas=N
+
+{{- if not .Values.master.seed.existingSecret }}
+
+NOTE: no seed was given, so the master picked a random one and this search
+cannot be resumed after the master is replaced. Put one in a Secret and set
+master.seed.existingSecret to make it reproducible. Treat it as you would the
+keys: whoever holds it can repeat the search.
+{{- end }}
+{{- if not .Values.master.persistence.enabled }}
+
+WARNING: master.persistence is off, so the keys live in the pod and go with it.
+{{- end }}
+{{- if eq .Values.worker.kind "Deployment" }}
+
+NOTE: workers keep finds the master has not taken yet in an emptyDir. That
+survives a container restart but not replacing the pod, so a worker lost during
+a master outage takes its unsent finds with it. Set worker.kind=StatefulSet to
+give each worker a volume of its own.
+{{- end }}

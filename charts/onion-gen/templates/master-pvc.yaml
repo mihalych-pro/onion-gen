@@ -1,0 +1,22 @@
+{{- if .Values.master.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "onion-gen.fullname" . }}-store
+  labels:
+    {{- include "onion-gen.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+  # Kept when the release goes. This holds the keys: everything else here can be
+  # recreated from the chart, and these cannot be found again.
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.master.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.master.persistence.size }}
+  {{- with .Values.master.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

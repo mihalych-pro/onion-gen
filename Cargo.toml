@@ -1,0 +1,213 @@
+[package]
+name = "onion-gen"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+description = "A vanity address generator for Tor Onion Service v3"
+license = "Apache-2.0"
+
+[workspace]
+# The CUDA kernel is a crate of its own because it targets nvptx64 and needs a
+# nightly toolchain; building it with the host would drag both onto everything.
+exclude = ["cuda-kernel"]
+
+[dependencies]
+# Keys in a database rather than a directory per key: SQLite in a file, or a
+# PostgreSQL or MySQL server. One crate for all three, because the alternative
+# was three unrelated drivers and three migration stories.
+#
+# `tls-rustls-ring` rather than native TLS: secret keys cross this connection,
+# and a build that needs OpenSSL on six cross-compilation targets is a build
+# that does not happen. SQLite is compiled from source for the same reason the
+# device paths open their libraries at run time - nothing has to be installed.
+sqlx = { version = "0.9", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring",
+    "sqlite",
+    "postgres",
+    "mysql",
+] }
+# The only way to put 64 bytes of key into a text column. The same encoding an
+# SSH key uses, and `base64 -d` turns a row back into the file tor reads.
+base64 = "0.23"
+fiat-crypto = "0.3"
+# Substring search over the encoded candidate. Walking offsets over packed bits
+# measured 2.8x more expensive (docs/implementation/matching-forms.md, 8).
+memchr = "2"
+# The device driver is resolved at run time rather than linked, so a binary
+# built here runs on a machine with a card and on one without, and the build
+# machine needs no CUDA toolkit at all.
+cudarc = { version = "0.19", default-features = false, features = [
+    "cuda-12060",
+    "dynamic-loading",
+    "driver",
+    "nvrtc",
+    "std",
+] }
+# The portable device path: one WGSL kernel reaching Vulkan, Metal and DX12.
+# Where the vendor path also works it is the faster of the two, and it is the
+# only one on AMD, Intel and every Mac.
+wgpu = { version = "30", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
+# The last resort among device paths: where neither the portable path nor the
+# vendor one answers, this one might. It opens its library at run time like the
+# others, so a binary built here still runs where OpenCL is absent.
+# `dynamic` is what opens the library at run time instead of linking it; without
+# it the binary would not start where OpenCL is absent. No version feature
+# beyond the base: Apple's OpenCL is 1.2 and does not export the 2.0 entry
+# points, so asking for them would lose the Mac.
+opencl3 = { version = "0.12", default-features = false, features = ["dynamic"] }
+# `wgpu` hands back futures; the device path has no runtime and wants none.
+pollster = "1"
+bytemuck = "1"
+# One automaton for many substrings: the cost of searching stops depending on
+# how many there are (docs/implementation/form-indexes.md).
+aho-corasick = "1"
+# A second, unrelated ed25519, used once per hit and never in the hot loop.
+# Our own arithmetic checking itself would prove nothing: it would be the same
+# code on both sides of the comparison, which is exactly how a defect in the
+# matcher survived three changes.
+curve25519-dalek = "5"
+sha2 = "0.11"
+sha3 = "0.12"
+rand = "0.10"
+# Rust has no signal API in std; run-control needs a clean SIGINT/SIGTERM stop.
+signal-hook = "0.4"
+# Flags, environment and a YAML file are the three configuration sources (D8).
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+# The maintained continuation of the archived serde_yaml.
+serde_yaml_ng = "0.10.0"
+# The sixth matching form. Unicode is off deliberately rather than to save
+# space: the haystack is 56 bytes of base32, so `.` should mean "one symbol"
+# and `\w` should be ASCII. With Unicode on, both mean something else, and the
+# difference would surface as a filter that quietly matches the wrong thing.
+regex = { version = "1", default-features = false, features = ["std", "perf"] }
+# Literal extraction, which is what keeps a regex from costing a base32
+# encoding per candidate. Its parser must be configured identically to the one
+# `regex` uses, or the literals would be extracted from a different expression
+# than the one being matched.
+regex-syntax = { version = "0.8", default-features = false }
+# The distributed mode: a master coordinating workers over HTTP.
+#
+# `tokio` is the async runtime the network side runs on; the search itself
+# stays on its own threads and never touches it.
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "time", "signal", "io-util"] }
+# HTTP on top of tokio, and nothing on top of that. Measured against the
+# alternative: `axum` with `reqwest` costs 52 crates more and saves some
+# twenty-odd lines, and among those crates is the whole ICU stack, pulled in
+# by `url` for internationalised domain names we will never have.
+hyper = { version = "1", features = ["server", "client", "http1"] }
+# The adapter between tokio's sockets and hyper's IO traits. Needed by both
+# sides; no `client-legacy` feature, because a worker talks to the master about
+# four times a minute and opens a connection per request rather than pooling.
+hyper-util = { version = "0.1", features = ["tokio", "server", "http1"] }
+http-body-util = "0.1"
+# Metrics, from Prometheus' own client: github.com/prometheus/client_rust. The
+# `prometheus` crate that ranks higher in a search belongs to TiKV. Sixteen
+# crates, and it does not escape label values — measured, not assumed — so
+# anything that reaches a label is made safe before it gets there.
+prometheus-client = "0.25"
+
+# An outside opinion on a found key: the onion-service types the Arti project
+# uses in the Tor client it ships. Our own arithmetic checking itself proves
+# only that it is self-consistent. No network code is reached - an address is
+# parsed and rendered, nothing is contacted.
+tor-hscrypto = "0.47"
+safelog = "0.10"
+
+# Machine-readable output, so that a wrapper reads a parser's answer instead of
+# a regular expression's. Hand-rolling it would mean hand-rolling the escaping,
+# and a path on Windows is exactly where that goes wrong.
+serde_json = "1"
+
+[dev-dependencies]
+serde_json = "1"
+# The shader is compiled on the machine that runs it, so a typo in it would
+# otherwise reach a user. This parses and validates it during the test run, on
+# any machine, with or without a device.
+naga = { version = "30", features = ["wgsl-in"] }
+hex = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# Release plus symbols, for the profiler. Same code generation as release, so
+# what it shows is what ships; without the symbols the call tree is addresses.
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+
+# panic = "abort" does not fit the test harness, so benches get their own profile.
+
+# The measurement harnesses behind the numbers in docs/. Each is a plain
+# `fn main()`, so `harness = false`: the libtest harness would expect #[bench]
+# functions and swallow the output. Run one with `cargo bench --bench <name>`.
+
+[[bench]]
+name = "field-bench"
+path = "benches/field-bench.rs"
+harness = false
+
+[[bench]]
+name = "gpu-chain"
+path = "benches/gpu-chain.rs"
+harness = false
+
+[[bench]]
+name = "hit-rate"
+path = "benches/hit-rate.rs"
+harness = false
+
+[[bench]]
+name = "index-width"
+path = "benches/index-width.rs"
+harness = false
+
+[[bench]]
+name = "master-load"
+path = "benches/master-load.rs"
+harness = false
+
+[[bench]]
+name = "match-bench"
+path = "benches/match-bench.rs"
+harness = false
+
+[[bench]]
+name = "regex-cost"
+path = "benches/regex-cost.rs"
+harness = false
+
+[[bench]]
+name = "score-calibration"
+path = "benches/score-calibration.rs"
+harness = false
+
+[[bench]]
+name = "substring-scaling"
+path = "benches/substring-scaling.rs"
+harness = false
+
+[[bench]]
+name = "pair-scheme"
+path = "benches/pair-scheme.rs"
+harness = false
+
+[[bench]]
+name = "field-radix"
+path = "benches/field-radix.rs"
+harness = false
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[[bench]]
+name = "store-rate"
+path = "benches/store-rate.rs"
+harness = false

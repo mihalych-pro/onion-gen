@@ -1,0 +1,12 @@
+# The service directory: the generator's keys are mounted here.
+HiddenServiceDir /var/lib/tor/hs
+# Left: the port inside Tor. Right: where to proxy inside the compose network.
+HiddenServicePort 80 nginx:8080
+
+DataDirectory /var/lib/tor/data
+SocksPort 0
+Log notice stdout
+
+# Uncomment to check WITHOUT publishing the service to the Tor network:
+# tor reads the key, creates hostname and announces no descriptor.
+DisableNetwork 1

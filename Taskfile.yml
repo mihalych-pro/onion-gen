@@ -1,0 +1,176 @@
+# Repeatable operations for onion-gen.
+#
+# Install the runner with `brew install go-task` (macOS) or see
+# https://taskfile.dev for other platforms. `task --list` shows everything.
+#
+# Machine addresses are never stored here. Set them in the environment or in a
+# local `.env` file, which `.gitignore` keeps out of the repository:
+#
+#   ONION_GEN_LINUX_HOST=user@host
+#   ONION_GEN_WINDOWS_HOST=user@host
+
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  # A directory of its own on the remote: shipping to a bare name collided
+  # with a checked-out source tree called onion-gen, and scp happily wrote the
+  # binary inside it.
+  REMOTE_DIR: onion-gen-bin
+  LINUX_TARGET: x86_64-unknown-linux-gnu.2.17
+  LINUX_DIR: x86_64-unknown-linux-gnu
+  WINDOWS_TARGET: x86_64-pc-windows-gnu
+  MACOS_TARGET: aarch64-apple-darwin
+
+tasks:
+  default:
+    desc: "What you usually want before committing: format, lint, test."
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  build:
+    desc: Build the release binary for this machine.
+    cmds:
+      - cargo build --release
+
+  test:
+    desc: Run the whole test suite.
+    cmds:
+      - cargo test --release
+
+  lint:
+    desc: Run clippy over everything, warnings included.
+    cmds:
+      - cargo clippy --all-targets --release -- -D warnings
+
+  fmt:
+    desc: Format the code.
+    cmds:
+      - cargo fmt
+
+  fmt:check:
+    desc: Check formatting without changing anything, as CI does.
+    cmds:
+      - cargo fmt --check
+
+  kernel:setup:
+    desc: Fetch the toolchain the CUDA kernel is compiled with.
+    cmds:
+      # Every build compiles the kernel, so this is needed once per machine
+      # before anything else works. Run from that directory, rustup reads the
+      # version from cuda-kernel/rust-toolchain.toml and fetches it.
+      - cd cuda-kernel && rustup toolchain install
+
+  kernel:ptx:
+    desc: Compile the kernel on its own and say what the PTX came to.
+    deps: [kernel:setup]
+    cmds:
+      - cd cuda-kernel && cargo build --release --target nvptx64-nvidia-cuda
+      # The two properties a change to the kernel can lose without any error:
+      # the widening multiply has to reach the PTX, and nothing may spill.
+      - |
+        set -eu
+        ptx=cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+        test -s "$ptx"
+        echo "widening multiplies: $(grep -c 'mul.wide.u32\|mad.wide.u32' "$ptx")"
+        for k in chain_steps chain_reduce; do
+          spills=$(awk "/\\.visible \\.entry $k/,/^}/" "$ptx" | grep -c 'ld.local\|st.local' || true)
+          echo "local accesses in $k: $spills"
+          test "$spills" -le 64
+        done
+
+  cross:setup:
+    desc: Install what cross-building needs, once per machine.
+    deps: [kernel:setup]
+    cmds:
+      - rustup target add {{.LINUX_DIR}} {{.WINDOWS_TARGET}} {{.MACOS_TARGET}}
+      - cmd: command -v zig >/dev/null || echo "zig is missing - brew install zig cargo-zigbuild"
+        silent: true
+
+  cross:linux:
+    desc: Build for linux/amd64. The glibc suffix sets the minimum version.
+    cmds:
+      - cargo zigbuild --release --target {{.LINUX_TARGET}}
+
+  cross:windows:
+    desc: Build for windows/amd64.
+    cmds:
+      - cargo zigbuild --release --target {{.WINDOWS_TARGET}}
+
+  cross:macos:
+    desc: Build for darwin/arm64.
+    cmds:
+      - cargo zigbuild --release --target {{.MACOS_TARGET}}
+
+  cross:all:
+    desc: Build for all three platforms.
+    deps: [cross:linux, cross:windows, cross:macos]
+
+  ship:linux:
+    desc: Send the linux binary to the test machine and prove it runs there.
+    preconditions:
+      - sh: '[ -n "$ONION_GEN_LINUX_HOST" ]'
+        msg: set ONION_GEN_LINUX_HOST=user@host in the environment or .env
+    deps: [cross:linux]
+    cmds:
+      - ssh $ONION_GEN_LINUX_HOST 'mkdir -p {{.REMOTE_DIR}}'
+      - scp -q target/{{.LINUX_DIR}}/release/onion-gen $ONION_GEN_LINUX_HOST:{{.REMOTE_DIR}}/onion-gen
+      - ssh $ONION_GEN_LINUX_HOST 'cd {{.REMOTE_DIR}} && chmod +x onion-gen && ./onion-gen -n 1 -d og-check -F abcd'
+
+  ship:windows:
+    desc: Send the windows binary to the test machine and prove it runs there.
+    preconditions:
+      - sh: '[ -n "$ONION_GEN_WINDOWS_HOST" ]'
+        msg: set ONION_GEN_WINDOWS_HOST=user@host in the environment or .env
+    deps: [cross:windows]
+    cmds:
+      - ssh $ONION_GEN_WINDOWS_HOST 'if not exist {{.REMOTE_DIR}} mkdir {{.REMOTE_DIR}}'
+      - scp -q target/{{.WINDOWS_TARGET}}/release/onion-gen.exe $ONION_GEN_WINDOWS_HOST:{{.REMOTE_DIR}}/onion-gen.exe
+      - ssh $ONION_GEN_WINDOWS_HOST 'cd {{.REMOTE_DIR}} && onion-gen.exe -n 1 -d og-check -F abcd'
+
+  bench:store:
+    desc: How fast each kind of store takes finds. Set ONION_GEN_TEST_POSTGRES and ONION_GEN_TEST_MYSQL to include servers.
+    cmds:
+      - cargo bench --bench store-rate
+
+  guess:
+    desc: How long a filter would take on this machine. Pass FILTER=text.
+    cmds:
+      - ./target/release/onion-gen guess -F {{.FILTER | default "abcdef"}}
+
+  evaluate:
+    desc: What each prefix length from 4 to 12 symbols costs on this machine.
+    cmds:
+      - ./target/release/onion-gen -F abcdefghijkl --evaluate -n 1 -q
+
+  bench:acceptance:
+    desc: Throughput per matching form, five samples each.
+    cmds:
+      - ./scripts/bench/run-form-acceptance.sh 5
+
+  verify:device:
+    desc: Run every device this machine has against the processor, candidate for candidate.
+    cmds:
+      - cargo bench --bench gpu-chain
+
+  verify:keys:
+    desc: Check found keys with the built-in checker. Pass DIR=path.
+    cmds:
+      # Checks the files, the clamping, the derivation and the address, the
+      # last of those against `tor-hscrypto` rather than against ourselves.
+      - ./target/release/onion-gen verify {{.DIR | default "./out"}}
+
+  verify:keys:python:
+    desc: The same keys through the independent Python checker. Pass DIR=path.
+    cmds:
+      # A second opinion from outside the binary: a different language and a
+      # different ed25519, so a defect would have to exist in both to pass.
+      - ./scripts/verify/verify-onion-address.py {{.DIR | default "./out"}}
+
+  verify:tor:
+    desc: Check found keys with tor, network disabled. Pass DIR=path.
+    cmds:
+      - ./scripts/verify/verify-with-tor.sh {{.DIR | default "./out"}}/*.onion

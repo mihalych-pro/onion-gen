@@ -1,0 +1,136 @@
+image:
+  repository: onion-gen
+  tag: ""          # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# What the fleet is looking for.
+#
+# Four symbols is the floor, and the chart refuses less. It is not a
+# sufficiency: one RTX 4060 on a four-symbol filter produces some 950 finds a
+# second and a directory per key takes about 160, so the workers would queue.
+# Six symbols or more is the ordinary case; `master.database` lifts the store
+# out of the way of the shorter ones.
+filters:
+  - abcdef
+
+# A dictionary too large for `filters`. The key is read as one filter per line.
+filtersConfigMap:
+  name: ""
+  key: filters.txt
+
+master:
+  # The root seed every key of this fleet comes from.
+  #
+  # Leave it empty and the master picks a random one, saying so: the fleet then
+  # cannot be resumed from scratch. Supply one through a Secret to make the
+  # search reproducible. It is as sensitive as the keys themselves — whoever has
+  # it can redo the search — so it belongs in a Secret and never in values.
+  seed:
+    existingSecret: ""
+    key: seed
+  leaseSeconds: 60
+  # How much work a lease should be, in seconds of the worker's own rate. The
+  # master sizes each lease from what the worker reports; the spread between a
+  # fast card and a processor is 14.3x.
+  leaseWorkSeconds: 60
+  # Keep finds as rows instead of a directory per key. A row holds the same
+  # bytes the three files do. Directories take about 160 finds a second, rows
+  # between 22 700 and 244 000 depending on the database, and one place to
+  # query is easier than a million directories.
+  #
+  # `url` is a connection string: a path or sqlite:// for a file on the volume,
+  # postgres:// or mysql:// for a server. A connection string with a password
+  # belongs in a Secret rather than here - set `existingSecret` and leave `url`
+  # empty, and it reaches the master through ONION_GEN_DB instead of the
+  # command line, where anything that can list processes on the node could read
+  # it. See docs/deployment/databases.md.
+  database:
+    enabled: false
+    url: /keys/fleet.db
+    existingSecret: ""
+    key: url
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    # ReadWriteOnce with a Deployment means a rolling update would deadlock on
+    # the volume, so the master is recreated rather than rolled. One master is
+    # all there is; a few seconds without it costs nothing, because workers
+    # finish the range they hold.
+    accessMode: ReadWriteOnce
+  service:
+    type: ClusterIP
+    port: 8080
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+worker:
+  replicas: 3
+  # Deployment or StatefulSet.
+  #
+  # A StatefulSet gives every worker its own volume for finds the master has not
+  # taken yet, and a stable name in the fleet view. A Deployment is simpler but
+  # keeps that buffer in an emptyDir, so replacing a pod while the master is
+  # away loses whatever it was holding — and a find can be a week's work.
+  kind: Deployment
+  compute: auto
+  threads: 0        # 0 lets the worker decide
+  bufferLimit: 1024
+  buffer:
+    size: 1Gi
+    storageClass: ""
+  endpointPort: 9100
+  resources:
+    requests: { cpu: "1", memory: 512Mi }
+    limits: { memory: 2Gi }
+  # Liveness must not depend on reaching the master. A worker whose master has
+  # gone is finishing its range and keeping its finds; restarting it throws both
+  # away, and a master outage would do that to every worker at once.
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 2
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+serviceAccount:
+  create: true
+  name: ""
+
+# Prometheus Operator. Two monitors, because master and worker know different
+# things about the fleet and neither forwards the other's numbers.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  # The ids the distroless `nonroot` image uses. They have to match the image,
+  # not be chosen: with different ones the volume arrives owned by somebody else
+  # and the master cannot write a key into it.
+  runAsUser: 65532
+  runAsGroup: 65532
+  # Makes the volume group-writable by that id, which is what a PVC needs.
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

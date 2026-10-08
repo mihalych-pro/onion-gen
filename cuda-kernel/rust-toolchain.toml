@@ -1,0 +1,8 @@
+# Pinned rather than tracking nightly: the kernel is compiled on every build of
+# the product, and a compiler that changes under it would change what runs on
+# the card without anything being said. Raising this is a deliberate act, and
+# the PTX it produces is worth comparing against the old one first.
+[toolchain]
+channel = "nightly-2026-10-06"
+targets = ["nvptx64-nvidia-cuda"]
+components = ["llvm-bitcode-linker", "llvm-tools"]
