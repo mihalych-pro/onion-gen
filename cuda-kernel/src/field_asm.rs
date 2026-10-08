@@ -21,6 +21,8 @@ const P: Fe = [
 
 #[inline(always)]
 pub unsafe fn mul(f: &Fe, g: &Fe) -> Fe {
+    // p0..p7 are read by the first row before anything writes them; p8..p15
+    // are written before they are read, so they start undeclared.
     let mut p0: u32 = 0;
     let mut p1: u32 = 0;
     let mut p2: u32 = 0;
@@ -29,14 +31,14 @@ pub unsafe fn mul(f: &Fe, g: &Fe) -> Fe {
     let mut p5: u32 = 0;
     let mut p6: u32 = 0;
     let mut p7: u32 = 0;
-    let mut p8: u32 = 0;
-    let mut p9: u32 = 0;
-    let mut p10: u32 = 0;
-    let mut p11: u32 = 0;
-    let mut p12: u32 = 0;
-    let mut p13: u32 = 0;
-    let mut p14: u32 = 0;
-    let mut p15: u32 = 0;
+    let mut p8: u32;
+    let mut p9: u32;
+    let mut p10: u32;
+    let mut p11: u32;
+    let mut p12: u32;
+    let mut p13: u32;
+    let mut p14: u32;
+    let p15: u32;
     let mut t: u64;
     let mut cy: u32;
     cy = 0;

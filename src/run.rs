@@ -934,6 +934,7 @@ fn spawn_reporter(
     std::thread::spawn(move || {
         let tick = Duration::from_millis(100).min(interval);
         let mut previous = 0u64;
+        let mut last = Instant::now();
         loop {
             let deadline = Instant::now() + interval;
             while Instant::now() < deadline {
@@ -949,7 +950,14 @@ fn spawn_reporter(
             let total = shared.candidates.load(Ordering::Relaxed);
             let delta = total - previous;
             previous = total;
-            let rate = delta as f64 / interval.as_secs_f64();
+            // Over the span that actually passed, not the one asked for. The
+            // wait above overshoots by up to a tick and by however long the
+            // machine was busy, and dividing by the nominal interval reports a
+            // rate the run never reached.
+            let now = Instant::now();
+            let span = now.duration_since(last).as_secs_f64();
+            last = now;
+            let rate = if span > 0.0 { delta as f64 / span } else { 0.0 };
             // `calc/sec:` first, and in `mkp224o`'s own shape: a comparison
             // is only a comparison when one parser reads both. Anything added
             // here goes after it.

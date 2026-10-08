@@ -50,13 +50,18 @@ fn code(args: &[&str], stop_after: Option<std::time::Duration>) -> i32 {
 
     if let Some(wait) = stop_after {
         std::thread::sleep(wait);
-        // The signal a node drain sends, and the one ctrl-c sends.
+        // The signal a node drain sends, and the one ctrl-c sends. Windows has
+        // no equivalent that one process can deliver to another, so the tests
+        // that need it are unix-only.
+        #[cfg(unix)]
         unsafe {
             extern "C" {
                 fn kill(pid: i32, sig: i32) -> i32;
             }
             kill(child.id() as i32, 15);
         }
+        #[cfg(not(unix))]
+        let _ = &child;
     }
     child
         .wait_with_output()
@@ -89,6 +94,7 @@ fn reaching_the_goal_exits_zero() {
 }
 
 #[test]
+#[cfg(unix)]
 fn being_stopped_short_of_the_goal_does_not_exit_zero() {
     let dir = out_dir("short");
     let got = code(
@@ -120,6 +126,7 @@ fn being_stopped_short_of_the_goal_does_not_exit_zero() {
 /// end. Documented rather than special-cased: a `Job` over such a run can
 /// never complete, and that has to be visible rather than surprising.
 #[test]
+#[cfg(unix)]
 fn a_run_without_a_goal_cannot_report_success() {
     let dir = out_dir("nogoal");
     let got = code(
