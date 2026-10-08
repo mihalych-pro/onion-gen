@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="With exit code zero on an interrupt the Job stops the whole fleet with no key; with a separate code the fleet keeps searching">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <text class="ts" x="24" y="28">an interrupt gives 0</text>
+  <rect class="bxp" x="24" y="44" width="230" height="52" rx="3"/>
+  <text class="t" x="44" y="66">pod evicted on</text>
+  <text class="t" x="44" y="84">a node drain</text>
+  <line class="lnw" x1="254" y1="70" x2="330" y2="70" marker-end="url(#arw)"/>
+  <text class="twrn" x="292" y="60" text-anchor="middle">exit 0</text>
+  <rect class="bxw" x="336" y="44" width="220" height="52" rx="3"/>
+  <text class="twrn" x="356" y="66">Job: “success”</text>
+  <text class="twrn" x="356" y="84">completions: 1 done</text>
+  <line class="lnw" x1="556" y1="70" x2="632" y2="70" marker-end="url(#arw)"/>
+  <rect class="bxw" x="638" y="44" width="218" height="52" rx="3"/>
+  <text class="twrn" x="658" y="66">the whole fleet stops</text>
+  <text class="twrn" x="658" y="84">no keys found</text>
+  <text class="tms" x="24" y="132">no error — the Job “completed”</text>
+  <line class="ln" x1="24" y1="158" x2="856" y2="158"/>
+  <text class="ts" x="24" y="196">an interrupt gives 4</text>
+  <rect class="bxp" x="24" y="212" width="230" height="52" rx="3"/>
+  <text class="t" x="44" y="234">pod evicted on</text>
+  <text class="t" x="44" y="252">a node drain</text>
+  <line class="ln" x1="254" y1="238" x2="330" y2="238" marker-end="url(#ar)"/>
+  <text class="tm" x="292" y="228" text-anchor="middle">exit 4</text>
+  <rect class="bxp" x="336" y="212" width="220" height="52" rx="3"/>
+  <text class="t" x="356" y="234">Job: goal not reached</text>
+  <text class="t" x="356" y="252">pod is recreated</text>
+  <line class="ln" x1="556" y1="238" x2="632" y2="238" marker-end="url(#ar)"/>
+  <rect class="bxp" x="638" y="212" width="218" height="52" rx="3"/>
+  <text class="t" x="658" y="234">the fleet keeps</text>
+  <text class="t" x="658" y="252">searching</text>
+  <rect class="bxp" x="24" y="288" width="230" height="52" rx="3"/>
+  <text class="t" x="44" y="310">found the requested</text>
+  <text class="t" x="44" y="328">number of keys</text>
+  <line class="lns" x1="254" y1="314" x2="330" y2="314" marker-end="url(#ars)"/>
+  <text class="tsig" x="292" y="304" text-anchor="middle">exit 0</text>
+  <rect class="bxs" x="336" y="288" width="220" height="52" rx="3"/>
+  <text class="tsig" x="356" y="310">Job: success</text>
+  <text class="tsig" x="356" y="328">completions: 1 done</text>
+  <line class="lns" x1="556" y1="314" x2="632" y2="314" marker-end="url(#ars)"/>
+  <rect class="bxs" x="638" y="288" width="218" height="52" rx="3"/>
+  <text class="tsig" x="658" y="310">the fleet stops</text>
+  <text class="tsig" x="658" y="328">which is what we want</text>
+</svg>

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 312" width="880" height="312" role="img" aria-label="The worker stops renewing the lease; after 60 seconds the range returns to the queue and another worker takes it">
+  <style>
+    .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
+    .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
+    .bxs  { fill:#f7e4ec; stroke:#b0225c; stroke-width:1.5 }
+    .bxw  { fill:#f6ecd8; stroke:#8a5a00; stroke-width:1.5 }
+    .t    { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:13px;   fill:#141e27 }
+    .ts   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;   fill:#141e27; font-weight:600 }
+    .tf   { font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:12.5px; fill:#4f5f6d }
+    .tm   { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#141e27 }
+    .tms  { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;   fill:#4f5f6d }
+    .tsig { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#b0225c; font-weight:500 }
+    .twrn { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; fill:#8a5a00; font-weight:500 }
+    .ln   { stroke:#bcc7d1; stroke-width:1.5; fill:none }
+    .lnd  { stroke:#bcc7d1; stroke-width:1.5; fill:none; stroke-dasharray:5 4 }
+    .lns  { stroke:#b0225c; stroke-width:1.8; fill:none }
+    .lnw  { stroke:#8a5a00; stroke-width:1.8; fill:none }
+    .lnl  { stroke:#bcc7d1; stroke-width:1.2; stroke-dasharray:3 5 }
+    .ah   { fill:#bcc7d1 }
+    .ahs  { fill:#b0225c }
+    .ahw  { fill:#8a5a00 }
+    @media (prefers-color-scheme: dark) {
+      .bx  { fill:#1d2833; stroke:#2e3d4a }
+      .bxp { stroke:#2e3d4a }
+      .bxs { fill:#33141f; stroke:#ff7aa8 }
+      .bxw { fill:#2d2413; stroke:#e0ad55 }
+      .t, .ts, .tm { fill:#dfe7ed }
+      .tf, .tms    { fill:#9aa8b4 }
+      .tsig { fill:#ff7aa8 }
+      .twrn { fill:#e0ad55 }
+      .ln, .lnd, .lnl { stroke:#2e3d4a }
+      .lns { stroke:#ff7aa8 }
+      .lnw { stroke:#e0ad55 }
+      .ah  { fill:#2e3d4a }
+      .ahs { fill:#ff7aa8 }
+      .ahw { fill:#e0ad55 }
+    }
+  </style>
+  <defs>
+    <marker id="ar"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ah"/></marker>
+    <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
+  </defs>
+  <line class="ln" x1="40" y1="272" x2="840" y2="272" marker-end="url(#ar)"/>
+  <text class="tms" x="812" y="296">time</text>
+  <line class="ln" x1="150" y1="258" x2="150" y2="286"/>
+  <text class="tms" x="150" y="306" text-anchor="middle">t</text>
+  <line class="ln" x1="450" y1="258" x2="450" y2="286"/>
+  <text class="tms" x="450" y="306" text-anchor="middle">t + 20 s</text>
+  <line class="ln" x1="640" y1="258" x2="640" y2="286"/>
+  <text class="twrn" x="640" y="306" text-anchor="middle">t + 60 s</text>
+  <rect class="bxp" x="150" y="40" width="300" height="52" rx="3"/>
+  <text class="ts" x="170" y="62">worker 2</text>
+  <text class="tms" x="170" y="82">holds blocks 400–499, renews</text>
+  <line class="lnd" x1="450" y1="66" x2="640" y2="66"/>
+  <text class="twrn" x="545" y="58" text-anchor="middle">silent</text>
+  <rect class="bxw" x="640" y="120" width="200" height="52" rx="3"/>
+  <text class="twrn" x="660" y="142">lease expired</text>
+  <text class="twrn" x="660" y="162">400–499 → to the queue</text>
+  <rect class="bxp" x="640" y="188" width="200" height="52" rx="3"/>
+  <text class="ts" x="660" y="210">worker 5</text>
+  <text class="tms" x="660" y="230">takes 400–499</text>
+  <line class="ln" x1="450" y1="92" x2="450" y2="256"/>
+  <text class="tms" x="462" y="112">pod evicted</text>
+</svg>
