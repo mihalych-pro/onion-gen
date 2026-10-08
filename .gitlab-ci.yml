@@ -26,8 +26,10 @@ variables:
   KERNEL_PTX: $CI_PROJECT_DIR/cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
 default:
-  # The image pins an older toolchain than the manifest asks for.
-  image: ghcr.io/rust-cross/cargo-zigbuild:latest
+  # Pinned, not `latest`: zig and cargo-zigbuild come with this image, and the
+  # pair has broken half the targets before. Its Rust is older than the manifest
+  # asks for, so every job switches to stable first.
+  image: ghcr.io/rust-cross/cargo-zigbuild:0.23.4
   before_script:
     - rustup toolchain install stable --profile minimal --component clippy,rustfmt
     - rustup default stable
@@ -44,6 +46,25 @@ default:
       - target/
 
 # ------------------------------------------------------------------ kernel ---
+
+# A tag that disagrees with Cargo.toml ships a binary whose `--version`
+# contradicts the release it came in, and nothing downstream reads Cargo.toml.
+version:
+  stage: kernel
+  rules:
+    - if: $CI_COMMIT_TAG
+  image: alpine:3.22
+  before_script: []
+  cache: []
+  script:
+    - |
+      set -eu
+      crate=$(awk -F'"' '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' Cargo.toml)
+      tag="${CI_COMMIT_TAG#v}"
+      echo "Cargo.toml: $crate"
+      echo "tag:        $tag"
+      test "$crate" = "$tag"
+
 
 kernel:
   stage: kernel
@@ -169,6 +190,8 @@ container:
     - job: check
       artifacts: false
     - job: linux
+    - job: version
+      optional: true
   # Rootless BuildKit, as GitLab documents it. The entrypoint is dropped: the
   # image's own one starts the daemon and never returns.
   image:
@@ -293,10 +316,17 @@ sign:
         cosign sign --yes "$IMAGE_REF"
       fi
 
-# The six files meet here so one `SHA256SUMS` covers all of them.
+# The six files meet here so one `SHA256SUMS` covers all of them. Behind
+# `check` as well: a red pipeline should not hand out a set of binaries that
+# looks ready.
 checksums:
   stage: publish
-  needs: [linux, windows, macos]
+  needs:
+    - job: check
+      artifacts: false
+    - job: linux
+    - job: windows
+    - job: macos
   image: alpine:3.22
   before_script: []
   cache: []
@@ -314,7 +344,7 @@ checksums:
 # registry rather than a job that is cleaned up in a week.
 release-assets:
   stage: publish
-  needs: [checksums]
+  needs: [checksums, version]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   image: alpine:3.22

@@ -191,3 +191,66 @@ tasks:
     desc: Check found keys with tor, network disabled. Pass DIR=path.
     cmds:
       - ./scripts/verify/verify-with-tor.sh {{.DIR | default "./keys"}}/*.onion
+
+  release:
+    desc: >-
+      Tag the version in Cargo.toml and push it, which starts the release.
+      Bump [package] version first; pass CONFIRM=yes to skip the prompt.
+    cmds:
+      - |
+        set -eu
+
+        version=$(awk -F'"' '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' Cargo.toml)
+        if [ -z "$version" ]; then
+          echo "no [package] version in Cargo.toml" >&2
+          exit 1
+        fi
+        tag="v$version"
+        branch=$(git rev-parse --abbrev-ref HEAD)
+
+        if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
+          echo "$tag already exists — bump the version in Cargo.toml first" >&2
+          exit 1
+        fi
+
+        # Brings Cargo.lock to the new version, so the commit below carries both.
+        cargo check --quiet
+
+        # Tracked changes elsewhere mean the tag would not describe what is in
+        # the tree. Untracked files cannot reach the commit below, so they do
+        # not count.
+        others=$(git status --porcelain --untracked-files=no -- . ':!Cargo.toml' ':!Cargo.lock')
+        if [ -n "$others" ]; then
+          echo "commit or stash these first:" >&2
+          echo "$others" >&2
+          exit 1
+        fi
+
+        echo "branch:  $branch"
+        echo "version: $version"
+        echo "tag:     $tag"
+        echo "pushes:  origin $branch, origin $tag"
+        echo
+
+        if [ "{{.CONFIRM}}" != "yes" ]; then
+          printf 'this publishes a release. go ahead? [y/N] '
+          read -r answer
+          case "$answer" in
+            y|Y|yes) ;;
+            *) echo "stopped"; exit 1 ;;
+          esac
+        fi
+
+        # Already committed at this version is a normal way to arrive here, so
+        # tag that commit rather than refusing.
+        if git diff --quiet -- Cargo.toml Cargo.lock \
+           && git diff --cached --quiet -- Cargo.toml Cargo.lock; then
+          echo "Cargo.toml is already committed at $version; tagging it"
+        else
+          git commit -m "chore: release $version" -- Cargo.toml Cargo.lock
+        fi
+
+        git tag "$tag"
+        git push origin "$branch"
+        git push origin "$tag"
+        echo "pushed $tag — the release workflow takes it from here"

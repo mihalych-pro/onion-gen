@@ -118,31 +118,38 @@ remote yet, so it is valid YAML and nothing more. Note also that keyless signing
 there needs gitlab.com — Fulcio does not trust a self-managed instance as an
 issuer, and the job falls back to a key, or skips, as its comments describe.
 
-One detail that will bite otherwise: the official `cargo-zigbuild` image pins
-an older toolchain than the manifest asks for, so every job installs stable
-first.
+One detail that will bite otherwise: the official `cargo-zigbuild` image carries
+zig 0.16.0, Rust 1.93.0 and cargo-zigbuild 0.23.4 — checked by running it, not
+read off a page. GitLab uses that image pinned to `0.23.4` rather than `latest`,
+because zig and cargo-zigbuild arrive with it and `latest` would take both out
+of our hands. Its Rust is older than the manifest asks for, so every job
+installs stable first.
 
 ## 7. Versions this was done with
 
-zig 0.16.0, cargo-zigbuild 0.23.4, rustc 1.99.0, go-task from Homebrew.
+zig 0.17.0, cargo-zigbuild 0.23.4, rustc 1.99.0, go-task from Homebrew.
 
-## 8. Continuous integration: written, not yet run
+## 8. Cutting a release
 
-Both configurations are in the repository and their content is grounded in what
-was checked by hand: one runner's platform is enough to produce all three
-binaries, and the `cargo-zigbuild` image pins an older toolchain than the
-manifest asks for, so every job switches to stable first. Every job that builds
-the crate also fetches the kernel's toolchain, because the build script
-compiles the GPU kernel to PTX — on a runner with no CUDA, which is the
-property most easily lost by accident.
+The crate's version is the source of truth and the tag follows it, never the
+other way round:
 
-The container build does it once instead, in a stage of its own: the PTX is
-architecture-independent, so one compilation serves both image architectures,
-and a change to the host code leaves that layer cached. The stage passes the
-file to the build script through `ONION_GEN_KERNEL_PTX`, which is why the
-compile stage itself needs no nightly.
+```bash
+# 1. Bump [package] version in Cargo.toml, then let the lock catch up.
+cargo check
+# 2. Commit it on its own.
+git commit -am "chore: release 0.2.0"
+# 3. Tag it with the same number and a leading v.
+git tag v0.2.0
+git push && git push --tags
+```
 
-**None of it has been through a real run.** The repository has no remotes, and
-by the owner's decision they come at the end of the project. Until then these
-files are a plan rather than a fact, and are marked as such rather than counted
-as done.
+The tag starts `.github/workflows/release.yml`, which refuses to go further if
+the two disagree: nothing downstream reads `Cargo.toml`, so without that check a
+mismatched tag would ship a binary whose `--version` contradicts the release it
+came in. From there the release carries six binaries, their checksums and notes
+built from the commits since the previous tag, and the image is published as
+`0.2.0`, `0.2`, `0` and `latest`.
+
+Versions are semantic. Before 1.0 a breaking change bumps the minor, which is
+where this is now.

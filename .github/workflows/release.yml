@@ -17,11 +17,33 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  kernel:
-    name: GPU kernel
+  version:
+    name: the tag matches the crate
+    # First, and everything waits on it: a tag that disagrees with Cargo.toml
+    # ships a binary whose `--version` contradicts the release it came in, and
+    # nothing downstream reads Cargo.toml to notice.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Compare
+        run: |
+          set -euo pipefail
+          crate=$(awk -F'"' '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version[[:space:]]*=/{print $2; exit}' Cargo.toml)
+          tag="${GITHUB_REF_NAME#v}"
+          echo "Cargo.toml: $crate"
+          echo "tag:        $tag"
+          if [ "$crate" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml $crate"
+            exit 1
+          fi
+
+  kernel:
+    name: GPU kernel
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
 
       - name: The kernel's toolchain
         working-directory: cuda-kernel
@@ -31,18 +53,55 @@ jobs:
         working-directory: cuda-kernel
         run: cargo build --release --target nvptx64-nvidia-cuda
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cuda-kernel-ptx
           if-no-files-found: error
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+
+  check:
+    name: check on ${{ matrix.os }}
+    # A tag is normally cut from a commit CI already passed, but "normally" is
+    # not a guarantee, and a release built from an untested tree is worse than
+    # a late one.
+    needs: kernel
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        shell: bash
+        run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --release -- -D warnings
+
+      - name: Tests
+        run: cargo test --release
 
   linux:
     name: binaries for linux
     needs: kernel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -51,7 +110,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cuda-kernel-ptx
           path: kernel
@@ -87,7 +146,7 @@ jobs:
           build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
           build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-linux
           if-no-files-found: error
@@ -98,7 +157,7 @@ jobs:
     needs: kernel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -107,7 +166,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cuda-kernel-ptx
           path: kernel
@@ -140,7 +199,7 @@ jobs:
           build x86_64-pc-windows-gnu       onion-gen-windows-amd64.exe
           build aarch64-pc-windows-gnullvm  onion-gen-windows-arm64.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-windows
           if-no-files-found: error
@@ -151,14 +210,14 @@ jobs:
     needs: kernel
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cuda-kernel-ptx
           path: kernel
@@ -178,7 +237,7 @@ jobs:
             echo "::endgroup::"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-macos
           if-no-files-found: error
@@ -186,15 +245,15 @@ jobs:
 
   publish:
     name: the release itself
-    needs: [linux, windows, macos]
+    needs: [check, linux, windows, macos]
     runs-on: ubuntu-latest
     steps:
       # Whole history: the notes are the commits since the previous tag.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: binaries-*
           merge-multiple: true
@@ -232,7 +291,7 @@ jobs:
           cat notes.md
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: notes.md
@@ -242,7 +301,7 @@ jobs:
     name: container image
     # After the binaries: a tag that cannot build must not leave a published
     # image pointing at a release that does not exist.
-    needs: [linux, windows, macos]
+    needs: [check, linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -251,18 +310,18 @@ jobs:
       # certificate, so there is no key to hold.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       # Pinned to 2.x: cosign 3 signs in the new bundle format by default, which
       # a 2.x client cannot verify. A 2.x signature verifies under both.
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4.1.2
         with:
           cosign-release: v2.6.5
 
       - name: Log in to the registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -272,7 +331,7 @@ jobs:
       # patches without naming each; the leading `v` is dropped.
       - name: What to tag it
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -281,7 +340,7 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: binaries-linux
           path: dist
@@ -295,7 +354,7 @@ jobs:
       # two copies carries nothing worth keeping.
       - name: Build and publish
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.dist
