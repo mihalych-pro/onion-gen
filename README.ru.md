@@ -8,6 +8,53 @@
 
 Написан на Rust. Ищет на процессоре, на видеокарте или на многих машинах сразу.
 
+## Установка
+
+Быстрее всего — готовый бинарник из релиза. Эти ссылки всегда ведут на
+последний:
+
+| Платформа | |
+|---|---|
+| Linux, Intel/AMD | [onion-gen-linux-amd64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64) |
+| Linux, ARM | [onion-gen-linux-arm64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-arm64) |
+| macOS, Apple silicon | [onion-gen-darwin-arm64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-darwin-arm64) |
+| macOS, Intel | [onion-gen-darwin-amd64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-darwin-amd64) |
+| Windows, Intel/AMD | [onion-gen-windows-amd64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-amd64.exe) |
+| Windows, ARM | [onion-gen-windows-arm64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-arm64.exe) |
+
+```bash
+curl -LO https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64
+chmod +x onion-gen-linux-amd64 && ./onion-gen-linux-amd64 --version
+```
+
+К каждому релизу прилагается
+[SHA256SUMS](https://github.com/mihalych-pro/onion-gen/releases/latest/download/SHA256SUMS)
+— проверить стоит: эта программа пишет ключи, которые нельзя восстановить.
+
+### Homebrew, на macOS и Linux
+
+```bash
+brew install mihalych-pro/tap/onion-gen
+```
+
+### Контейнер
+
+```bash
+docker run --rm -v "$PWD/keys:/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
+```
+
+`latest` следует за основной веткой; у релиза есть и тег с версией, так что
+`:0.1.0` останется на месте.
+
+Каждый опубликованный образ подписан, и подпись говорит, какой workflow его
+собрал:
+
+```bash
+cosign verify ghcr.io/mihalych-pro/onion-gen:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/mihalych-pro/onion-gen/\.github/workflows/'
+```
+
 ## Сборка
 
 Rust 1.99 или новее, поставленный через `rustup`:
@@ -287,6 +334,13 @@ SQLite, PostgreSQL или MySQL и пишет строки вместо папк
 в секунду в худшем случае против 160, а 160 — это как раз меньше того, что даёт
 видеокарта на коротком фильтре. Все трое остальных умеют только папки.
 
+**Образ, который не обязан идти от root.** Публикуется на каждый тег под
+linux/amd64 и linux/arm64, с версионными тегами, на базе distroless: libc и
+больше ничего — ни оболочки, ни пакетного менеджера, — а процесс идёт от
+непривилегированного 65532. У `prefix32` и `onionloom` Dockerfile нет вовсе.
+У `mkp224o` образ есть, но только под amd64, одним тегом `master` и из
+`scratch`, где учётных записей не существует, то есть от root.
+
 ## Безопасность
 
 Секретный ключ и есть адрес. У кого файл, тот владеет адресом навсегда: отозвать
@@ -294,6 +348,14 @@ SQLite, PostgreSQL или MySQL и пишет строки вместо папк
 не запекайте их в образы и не генерируйте ключи на машине, которой не
 управляете. Подробнее — в
 [docs/guides/using-generated-keys.ru.md](docs/guides/using-generated-keys.ru.md).
+
+Образ в контейнере собран на distroless: внутри libc и бинарник, без оболочки и
+пакетного менеджера, запуск от непривилегированного пользователя 65532. Сделать
+его полностью статическим нельзя — драйверы видеокарты открываются во время
+работы, — поэтому libc в образе и лежит. Подпись сделана через Sigstore и ключа
+не требует ни с чьей стороны: сертификат выдаётся под короткоживущий токен
+GitHub и называет workflow и коммит, из которых образ собран, — это и проверяет
+`cosign verify` выше.
 
 ## Документация
 

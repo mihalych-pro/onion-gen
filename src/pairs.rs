@@ -73,9 +73,10 @@ pub fn carry_path() -> &'static str {
     {
         if std::arch::is_x86_feature_detected!("bmi2") && std::arch::is_x86_feature_detected!("adx")
         {
-            return "wide carries (mulx, adcx/adox)";
+            "wide carries (mulx, adcx/adox)"
+        } else {
+            "baseline carries"
         }
-        return "baseline carries";
     }
     #[cfg(not(target_arch = "x86_64"))]
     {

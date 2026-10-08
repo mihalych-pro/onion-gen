@@ -9,6 +9,52 @@ in the layout tor expects.
 Written in Rust. Searches on the processor, on a graphics card, or across many
 machines.
 
+## Install
+
+The quickest way is a released binary. These links always point at the latest
+release:
+
+| Platform | |
+|---|---|
+| Linux, Intel/AMD | [onion-gen-linux-amd64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64) |
+| Linux, ARM | [onion-gen-linux-arm64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-arm64) |
+| macOS, Apple silicon | [onion-gen-darwin-arm64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-darwin-arm64) |
+| macOS, Intel | [onion-gen-darwin-amd64](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-darwin-amd64) |
+| Windows, Intel/AMD | [onion-gen-windows-amd64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-amd64.exe) |
+| Windows, ARM | [onion-gen-windows-arm64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-arm64.exe) |
+
+```bash
+curl -LO https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64
+chmod +x onion-gen-linux-amd64 && ./onion-gen-linux-amd64 --version
+```
+
+Every release carries
+[SHA256SUMS](https://github.com/mihalych-pro/onion-gen/releases/latest/download/SHA256SUMS);
+it is worth checking, since this program writes keys you cannot replace.
+
+### Homebrew, on macOS and Linux
+
+```bash
+brew install mihalych-pro/tap/onion-gen
+```
+
+### A container
+
+```bash
+docker run --rm -v "$PWD/keys:/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
+```
+
+`latest` follows the default branch; a release is also tagged by its version,
+so `:0.1.0` stays where it is.
+
+Every published image is signed, and the signature says which workflow built it:
+
+```bash
+cosign verify ghcr.io/mihalych-pro/onion-gen:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/mihalych-pro/onion-gen/\.github/workflows/'
+```
+
 ## Build
 
 Rust 1.99 or newer, installed through `rustup`:
@@ -286,6 +332,13 @@ PostgreSQL or MySQL and writes rows instead of a directory per key: 22 700 a
 second at worst against 160, which is what a card on a short filter actually
 produces. All three of the others write directories and nothing else.
 
+**An image that need not run as root.** Published on every tag for linux/amd64
+and linux/arm64 with version tags, on a distroless base — a libc and nothing
+else, no shell and no package manager — with the process running as the
+unprivileged 65532. `prefix32` and `onionloom` have no Dockerfile at all.
+`mkp224o` does publish one, but for amd64 only, under the single tag `master`,
+and from `scratch`, which has no user accounts, so it runs as root.
+
 ## Security
 
 The secret key is the address. Whoever holds the file owns the address
@@ -293,6 +346,13 @@ permanently — it cannot be revoked, only abandoned. Do not commit key
 directories or a `--db` database, do not bake them into images, and do not
 generate keys on a machine you do not control. More in
 [docs/guides/using-generated-keys.md](docs/guides/using-generated-keys.md).
+
+The container image is built on distroless: a libc and the binary, with no shell
+and no package manager, running as the unprivileged user 65532. It cannot be
+fully static — the device drivers are opened at run time — which is why the libc
+is there. It is signed through Sigstore with no key held anywhere: the signature
+is issued against a short-lived GitHub token and names the workflow and the
+commit that produced the image, which is what `cosign verify` above checks.
 
 ## Documentation
 

@@ -1,31 +1,83 @@
-# Build, test and lint on every target platform, then produce binaries and an
-# image.
+# Every branch: check the code, build the binaries, publish an image.
 #
-# Three jobs on purpose. `check` runs natively on each platform, because that is
-# the only way to exercise the code paths chosen by `cfg(windows)` and to run
-# the tests where they will actually run. `cross` then builds all six binaries
-# from one Linux runner, which zig makes possible by carrying the libc stubs for
-# every target. `image` builds the
-# container for both Linux architectures and publishes it as `latest`, but only
-# from main.
+# The shape follows two facts about this project rather than a template.
 #
-# No task runner here. The Taskfile is for a person at a keyboard; a pipeline
-# that calls it would be one indirection away from what it actually runs, and
-# the two would drift.
+# The CUDA kernel is compiled once, by the job that does nothing else, and
+# handed to everything downstream as an artifact. The build script would
+# otherwise compile it again in each of the jobs below — the same PTX six
+# times, and six chances for one of them to be built from something else.
+#
+# The binaries are built on the platform they are for. A Linux runner can
+# cross-compile for Linux and Windows through zig, but not for macOS: `wgpu`
+# links QuartzCore, CoreGraphics and libobjc, which are Apple's SDK and are not
+# on a Linux runner at any price. So darwin is built on macOS and the rest on
+# Linux, which is two runners rather than one and still fewer than one each.
 
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  kernel:
+    name: GPU kernel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Nightly, and pinned: both the `ptx-kernel` ABI and inline assembly for
+      # this architecture are unstable, and a compiler that changed underneath
+      # would change what runs on the card with nothing being said. The version
+      # is in cuda-kernel/rust-toolchain.toml, which rustup reads when run from
+      # that directory.
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cuda-kernel
+
+      - name: Compile to PTX
+        working-directory: cuda-kernel
+        run: cargo build --release --target nvptx64-nvidia-cuda
+
+      # No CUDA toolkit on this runner, and none is needed. Two properties a
+      # change to the kernel can lose without any error: the widening multiply
+      # has to reach the PTX, and nothing may spill — a stack frame means the
+      # point lives in off-chip memory, which costs a third of the throughput.
+      - name: It carries the right instructions and spills nothing
+        working-directory: cuda-kernel
+        run: |
+          set -euo pipefail
+          ptx=target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+          test -s "$ptx"
+          echo "widening multiplies: $(grep -c 'mul.wide.u32\|mad.wide.u32' "$ptx")"
+          for k in chain_steps chain_reduce; do
+            spills=$(awk "/\\.visible \\.entry $k/,/^}/" "$ptx" \
+              | grep -c 'ld.local\|st.local' || true)
+            echo "local accesses in $k: $spills"
+            test "$spills" -le 64
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          if-no-files-found: error
+          path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+
   check:
-    name: ${{ matrix.os }}
+    name: check on ${{ matrix.os }}
+    # Natively on each platform, because this is the only way to exercise what
+    # `cfg(windows)` selects and to run the tests where they will actually run.
+    # Clippy too: a lint that fires only under `cfg(target_arch = "x86_64")` is
+    # invisible from a Mac, which is how one reached main.
+    needs: kernel
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,12 +93,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The build script compiles the CUDA kernel, which needs the nightly
-      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
-      # directory, rustup reads the file, so the version lives in one place.
-      - name: The kernel's toolchain
-        working-directory: cuda-kernel
-        run: rustup toolchain install
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      # The build script takes this instead of compiling the kernel itself, so
+      # nothing here needs the nightly toolchain.
+      - name: Point the build at the kernel
+        shell: bash
+        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - name: Formatting
         run: cargo fmt --check
@@ -57,52 +113,9 @@ jobs:
       - name: Tests
         run: cargo test --release
 
-  kernel:
-    name: GPU kernel to PTX
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # The kernel needs nightly whatever it is written in: both the
-      # `ptx-kernel` ABI and inline assembly for this architecture are still
-      # unstable on 1.99. The host stays on stable — they are separate crates
-      # for exactly this reason. The version comes from the kernel's own
-      # toolchain file, which rustup reads when run from that directory.
-      - name: The kernel's toolchain
-        working-directory: cuda-kernel
-        run: rustup toolchain install
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Compile the kernel
-        working-directory: cuda-kernel
-        run: cargo build --release --target nvptx64-nvidia-cuda
-
-      # No CUDA toolkit on this runner, and none is needed. Two properties are
-      # guarded: the widening multiply has to reach the PTX, and nothing may
-      # spill — a stack frame means the point lives in off-chip memory, which
-      # costs a third of the throughput.
-      - name: The PTX carries the instructions it should and spills nothing
-        working-directory: cuda-kernel
-        run: |
-          ptx=target/nvptx64-nvidia-cuda/release/ogkernel.ptx
-          test -s "$ptx"
-          grep -c 'mul.wide.u32\|mad.wide.u32' "$ptx"
-          for k in chain_steps chain_reduce; do
-            spills=$(awk "/\\.visible \\.entry $k/,/^}/" "$ptx" \
-              | grep -c 'ld.local\|st.local' || true)
-            echo "local accesses in $k: $spills"
-            test "$spills" -le 64
-          done
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: onion-gen-ptx
-          if-no-files-found: error
-          path: cuda-kernel/target/nvptx64-nvidia-cuda/release/*.ptx
-
-  cross:
-    name: binaries for every platform
+  linux-and-windows:
+    name: binaries for linux and windows
+    needs: kernel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,19 +126,18 @@ jobs:
           targets: >-
             x86_64-unknown-linux-gnu,
             aarch64-unknown-linux-gnu,
-            x86_64-apple-darwin,
-            aarch64-apple-darwin,
             x86_64-pc-windows-gnu,
             aarch64-pc-windows-gnullvm
 
       - uses: Swatinem/rust-cache@v2
 
-      # The build script compiles the CUDA kernel, which needs the nightly
-      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
-      # directory, rustup reads the file, so the version lives in one place.
-      - name: The kernel's toolchain
-        working-directory: cuda-kernel
-        run: rustup toolchain install
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -139,9 +151,10 @@ jobs:
       # know what `aarch64-pc-windows-gnullvm` is to work out whether it is the
       # one for their laptop.
       #
-      # The `.2.17` suffix on the linux targets sets the oldest glibc the binary
-      # will run against, which is CentOS 7.
-      - name: Build every target
+      # The `.2.28` suffix on the linux targets sets the oldest glibc the binary
+      # will run against. That is RHEL 8 and its rebuilds, supported to May 2029
+      # and the oldest glibc anybody still gets updates for.
+      - name: Build
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -154,12 +167,72 @@ jobs:
             cp "$src" "dist/$2"
             echo "::endgroup::"
           }
-          build x86_64-unknown-linux-gnu.2.17   onion-gen-linux-amd64
-          build aarch64-unknown-linux-gnu.2.17  onion-gen-linux-arm64
-          build x86_64-apple-darwin             onion-gen-darwin-amd64
-          build aarch64-apple-darwin            onion-gen-darwin-arm64
+          build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
+          build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
           build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
           build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-linux-windows
+          if-no-files-found: error
+          path: dist/*
+
+  macos:
+    name: binaries for macos
+    # On a Mac and not through zig: `wgpu` links Apple frameworks that exist
+    # only in the macOS SDK, so a Linux runner cannot produce these at all.
+    needs: kernel
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for pair in "x86_64-apple-darwin amd64" "aarch64-apple-darwin arm64"; do
+            set -- $pair
+            echo "::group::$2"
+            cargo build --release --target "$1"
+            cp "target/$1/release/onion-gen" "dist/onion-gen-darwin-$2"
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-macos
+          if-no-files-found: error
+          path: dist/*
+
+  checksums:
+    name: one set of binaries
+    # The six files meet here so that `SHA256SUMS` covers all of them. Two
+    # files from two jobs would each have their own, which is two lists to
+    # check instead of one.
+    needs: [linux-and-windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist
 
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
@@ -172,35 +245,66 @@ jobs:
 
   image:
     name: container image
-    # Only from main: a pull request gets its image built but not published, so
-    # that a branch cannot overwrite what `latest` points at.
-    needs: [check, kernel, cross]
+    needs: [check, checksums]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      # For the signature: cosign asks GitHub for a short-lived OIDC token and
+      # gets a certificate against it, so there is no key to hold anywhere.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      # Pinned to the 2.x line: cosign 3 signs in the new protobuf bundle format
+      # by default, which a 2.x client cannot verify without being told to. A 2.x
+      # signature verifies under both, and the README hands out one command.
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.6.5
 
+      # A pull request from a fork has no write token, so it builds the image
+      # and stops there. Nothing a stranger pushes can land in the registry.
       - name: Log in to the registry
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `latest` only from main, a branch tag for every branch, and the commit
+      # always — so a branch can be pulled by name while `latest` keeps meaning
+      # "what main is".
+      - name: What to tag it
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and publish
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Signed by digest and not by tag: every tag above points at the same
+      # index, and a tag can be moved later while a digest cannot.
+      - name: Sign it
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"

@@ -1,25 +1,47 @@
-# What a tag produces: six binaries, their checksums, and a published image.
+# A tag produces a release: six binaries, their checksums, and an image.
 #
-# Separate from CI because it is triggered by a tag rather than a push, and
-# because what it publishes is permanent. CI may be re-run; a release may not.
-#
-# No task runner here either. The Taskfile is for a person at a keyboard.
+# The same shape as CI and for the same reasons — the kernel compiled once and
+# passed down, darwin built on a Mac because its frameworks exist nowhere else
+# — with one difference: nothing here is published until every binary exists.
+# A release missing the platform somebody came for is worse than a late one.
+
 name: Release
 
 on:
   push:
     tags: ["v*"]
 
-env:
-  CARGO_TERM_COLOR: always
-
 permissions:
   contents: write
   packages: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  binaries:
-    name: binaries
+  kernel:
+    name: GPU kernel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The kernel's toolchain
+        working-directory: cuda-kernel
+        run: rustup toolchain install
+
+      - name: Compile to PTX
+        working-directory: cuda-kernel
+        run: cargo build --release --target nvptx64-nvidia-cuda
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          if-no-files-found: error
+          path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
+
+  linux-and-windows:
+    name: binaries for linux and windows
+    needs: kernel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,31 +52,25 @@ jobs:
           targets: >-
             x86_64-unknown-linux-gnu,
             aarch64-unknown-linux-gnu,
-            x86_64-apple-darwin,
-            aarch64-apple-darwin,
             x86_64-pc-windows-gnu,
             aarch64-pc-windows-gnullvm
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      # The build script compiles the CUDA kernel, which needs the nightly
-      # toolchain named in cuda-kernel/rust-toolchain.toml. Run from that
-      # directory, rustup reads the file, so the version lives in one place.
-      - name: The kernel's toolchain
-        working-directory: cuda-kernel
-        run: rustup toolchain install
-
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      # Named for the platform they run on, not for the triple that produced
-      # them. Somebody choosing between six files should not have to know what
-      # `aarch64-pc-windows-gnullvm` means to find the one for their laptop.
-      - name: Build every target
+      - name: Build
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -67,30 +83,134 @@ jobs:
             cp "$src" "dist/$2"
             echo "::endgroup::"
           }
-          build x86_64-unknown-linux-gnu.2.17   onion-gen-linux-amd64
-          build aarch64-unknown-linux-gnu.2.17  onion-gen-linux-arm64
-          build x86_64-apple-darwin             onion-gen-darwin-amd64
-          build aarch64-apple-darwin            onion-gen-darwin-arm64
+          build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
+          build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
           build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
           build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-linux-windows
+          if-no-files-found: error
+          path: dist/*
+
+  macos:
+    name: binaries for macos
+    needs: kernel
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for pair in "x86_64-apple-darwin amd64" "aarch64-apple-darwin arm64"; do
+            set -- $pair
+            echo "::group::$2"
+            cargo build --release --target "$1"
+            cp "target/$1/release/onion-gen" "dist/onion-gen-darwin-$2"
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-macos
+          if-no-files-found: error
+          path: dist/*
+
+  publish:
+    name: the release itself
+    needs: [linux-and-windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history, because the notes are the commits since the previous
+      # tag and a shallow clone cannot see them.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist
 
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
-      - name: Publish the release
+      # Written here rather than left to the automatic notes: those list pull
+      # requests, and a project that commits straight to main would get an
+      # empty release. The commits are what happened either way.
+      - name: What changed
+        id: notes
+        run: |
+          set -euo pipefail
+          previous=$(git describe --tags --abbrev=0 --exclude="$GITHUB_REF_NAME" 2>/dev/null || true)
+          {
+            if [ -n "$previous" ]; then
+              echo "### Changes since $previous"
+              echo
+              git log --no-merges --pretty='- %s (%h)' "$previous..$GITHUB_REF_NAME"
+              echo
+              echo "[Full diff](${{ github.server_url }}/${{ github.repository }}/compare/$previous...$GITHUB_REF_NAME)"
+            else
+              echo "### The first release"
+              echo
+              git log --no-merges --pretty='- %s (%h)' "$GITHUB_REF_NAME" | head -50
+            fi
+            echo
+            echo "### Checksums"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > notes.md
+          cat notes.md
+
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: notes.md
+          fail_on_unmatched_files: true
 
   image:
     name: container image
+    # After the binaries, so a tag that cannot build does not leave a published
+    # image pointing at a release that does not exist.
+    needs: [linux-and-windows, macos]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # For the signature: cosign asks GitHub for a short-lived OIDC token and
+      # gets a certificate against it, so there is no key to hold anywhere.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      # Pinned to the 2.x line: cosign 3 signs in the new protobuf bundle format
+      # by default, which a 2.x client cannot verify without being told to. A 2.x
+      # signature verifies under both, and the README hands out one command.
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.6.5
 
       - name: Log in to the registry
         uses: docker/login-action@v3
@@ -99,20 +219,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The tag without its leading `v`, so that the image reads
-      # `onion-gen:0.1.0` the way a chart's appVersion does.
-      - name: Work out the version
-        id: version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      # `1.2.3`, `1.2` and `1` from the tag, plus `latest`. The shortened ones
+      # let a deployment follow patches without naming each, which is what a
+      # chart's appVersion wants. The leading `v` is dropped so the image reads
+      # `onion-gen:0.1.0`.
+      - name: What to tag it
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
 
       - name: Build and publish
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.value }}
-            ghcr.io/${{ github.repository }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Signed by digest and not by tag: all four tags above point at the same
+      # index, and a tag can be moved later while a digest cannot.
+      - name: Sign it
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"

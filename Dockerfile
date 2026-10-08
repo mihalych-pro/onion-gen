@@ -74,12 +74,12 @@ ENV ONION_GEN_KERNEL_PTX=/kernel/cuda-kernel.ptx
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
 
-# The `.2.17` suffix sets the oldest glibc the binary will run on.
+# The `.2.28` suffix sets the oldest glibc the binary will run on.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     set -eux; \
     triple="$(cat /tmp/triple)"; \
-    cargo zigbuild --release --target "${triple}.2.17"; \
+    cargo zigbuild --release --target "${triple}.2.28"; \
     cp "target/${triple}/release/onion-gen" /onion-gen; \
     mkdir -p /keys-empty
 
