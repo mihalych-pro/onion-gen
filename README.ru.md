@@ -40,7 +40,7 @@ brew install mihalych-pro/tap/onion-gen
 ### Контейнер
 
 ```bash
-docker run --rm -v "$PWD/keys:/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
+docker run --rm -v "$PWD/keys:/home/nonroot/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
 ```
 
 `latest` следует за основной веткой; у релиза есть и тег с версией, так что
@@ -69,8 +69,11 @@ cargo test --release
 CUDA-тулкита, ни nightly для самой программы. Подробности —
 в [cuda-kernel/](cuda-kernel/README.md).
 
-Образ контейнера собирается в CI из `Dockerfile` в этом репозитории. Бинарники
-публикуются для linux, macOS и Windows под amd64 и arm64.
+Бинарники публикуются для linux, macOS и Windows под amd64 и arm64, и из них же
+собирается образ контейнера. Dockerfile'ов два: `Dockerfile` компилирует из
+исходников — его и стоит брать для локальной сборки, а `Dockerfile.dist`
+упаковывает уже готовые бинарники, и этим занят CI, чтобы не компилировать одно
+и то же дважды. Образ получается один и тот же.
 
 ## Как пользоваться
 

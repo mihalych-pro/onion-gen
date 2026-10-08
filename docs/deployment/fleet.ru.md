@@ -7,7 +7,7 @@
 
 ```
 onion-gen -F test -d ./keys                       # одиночный прогон
-onion-gen master --listen :8080 --store /keys     # оркестратор
+onion-gen master --listen :8080 --store ./keys    # оркестратор
 onion-gen worker --master http://master:8080      # работник
 ```
 
@@ -23,7 +23,7 @@ onion-gen worker --master http://master:8080      # работник
 найдётся второй раз не скоро. Том, а не слой контейнера.
 
 **Папки или база.** `--store` делает папку на каждый ключ, `--db
-/keys/fleet.db` вместо этого пишет строки, и в строках те же байты, что и в
+./keys/fleet.db` вместо этого пишет строки, и в строках те же байты, что и в
 файлах. Папок проходит около 160 в секунду, строк — 206 000, поэтому на коротком
 фильтре от этого выбора зависит, будут ли работники стоять в очереди. Один файл
 к тому же проще положить на том и забрать в резервную копию, чем миллион папок.
@@ -49,6 +49,11 @@ docker compose up -d --scale worker=3
 [`docker-compose.yml`](../../docker-compose.yml) в корне. Образ собирается сам:
 первая ступень компилирует, вторая содержит только бинарник на distroless —
 ни оболочки, ни пакетного менеджера, ни утилит.
+
+CI берёт не его. Он собирает бинарники один раз через zig, а потом упаковывает
+их [`Dockerfile.dist`](../../Dockerfile.dist), в котором ступени компиляции нет
+вовсе. Образ выходит тот же; разница только в том, компилируются исходники
+здесь или уже скомпилированы.
 
 Собрать под обе архитектуры или прогнать тесты внутри образа:
 
@@ -153,8 +158,8 @@ readinessProbe:
 
 ```bash
 docker service create --name master --publish 8080:8080 \
-  --mount type=volume,source=keys,target=/keys \
-  onion-gen:latest -F abcde master --listen 0.0.0.0:8080 --store /keys
+  --mount type=volume,source=keys,target=/home/nonroot/keys \
+  onion-gen:latest -F abcde master --listen 0.0.0.0:8080 --store /home/nonroot/keys
 docker service create --name worker --replicas 5 \
   onion-gen:latest --compute cpu worker --master http://master:8080
 ```

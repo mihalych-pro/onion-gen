@@ -1,11 +1,15 @@
-# Deny everything, then allow only what the build needs (see Dockerfile).
+# Deny everything, then allow what the two Dockerfiles need.
 *
 
+# Dockerfile, from sources.
 !Cargo.toml
 !Cargo.lock
 !build.rs
 !src
 !cuda-kernel
 
-# Back out again: the kernel's build output is not an input.
+# Dockerfile.dist, from built binaries.
+!dist
+
+# Build output is not an input.
 cuda-kernel/target

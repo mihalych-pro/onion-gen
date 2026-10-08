@@ -43,7 +43,7 @@ spec:
             - --listen
             - 0.0.0.0:{{ .Values.master.service.port }}
             - --store
-            - /keys
+            - /home/nonroot/keys
             {{- if and .Values.master.database.enabled (not .Values.master.database.existingSecret) }}
             - --db
             - {{ .Values.master.database.url | quote }}
@@ -92,7 +92,7 @@ spec:
             {{- toYaml .Values.master.resources | nindent 12 }}
           volumeMounts:
             - name: store
-              mountPath: /keys
+              mountPath: /home/nonroot/keys
             {{- if .Values.filtersConfigMap.name }}
             - name: filters
               mountPath: /etc/onion-gen

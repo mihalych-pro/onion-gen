@@ -12,7 +12,7 @@ Watch the fleet:
 Collect the keys:
 
   kubectl --namespace {{ .Release.Namespace }} exec deploy/{{ include "onion-gen.fullname" . }}-master -- \
-    tar cf - -C /keys . | tar xf - -C ./keys
+    tar cf - -C /home/nonroot/keys . | tar xf - -C ./keys
 
 Scale:
 

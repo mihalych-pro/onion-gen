@@ -50,7 +50,7 @@ master:
   # it. See docs/deployment/databases.md.
   database:
     enabled: false
-    url: /keys/fleet.db
+    url: /home/nonroot/keys/fleet.db
     existingSecret: ""
     key: url
   resources:

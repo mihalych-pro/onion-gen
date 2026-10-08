@@ -14,7 +14,7 @@
 
 ```
 onion-gen -F test -d ./keys                       # одиночный прогон
-onion-gen master --listen :8080 --store /keys     # оркестратор
+onion-gen master --listen :8080 --store ./keys    # оркестратор
 onion-gen worker --master http://master:8080      # работник
 ```
 

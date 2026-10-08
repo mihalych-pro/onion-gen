@@ -41,7 +41,7 @@ brew install mihalych-pro/tap/onion-gen
 ### A container
 
 ```bash
-docker run --rm -v "$PWD/keys:/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
+docker run --rm -v "$PWD/keys:/home/nonroot/keys" ghcr.io/mihalych-pro/onion-gen:latest -F test -n 1
 ```
 
 `latest` follows the default branch; a release is also tagged by its version,
@@ -69,8 +69,11 @@ toolchain; `rustup` fetches it the first time and nothing else is required —
 no CUDA toolkit, and the program itself stays on stable. See
 [cuda-kernel/](cuda-kernel/README.md).
 
-A container image is built by CI from the `Dockerfile` in this repository.
-Binaries are published for linux, macOS and Windows on amd64 and arm64.
+Binaries are published for linux, macOS and Windows on amd64 and arm64, and a
+container image is built from them. There are two Dockerfiles: `Dockerfile`
+compiles from sources and is what a local build should use, and
+`Dockerfile.dist` packs binaries that already exist, which is what CI does so
+the same sources are not compiled twice. Both produce the same image.
 
 ## Use
 

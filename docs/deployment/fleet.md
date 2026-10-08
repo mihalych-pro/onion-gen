@@ -7,7 +7,7 @@ the same flags a single run does.
 
 ```
 onion-gen -F test -d ./keys                       # a single-machine run
-onion-gen master --listen :8080 --store /keys     # the orchestrator
+onion-gen master --listen :8080 --store ./keys    # the orchestrator
 onion-gen worker --master http://master:8080      # a worker
 ```
 
@@ -24,7 +24,7 @@ undone — the same address will not turn up again soon. A volume, not the
 container's own layer.
 
 **Whether it is directories or a database.** `--store` makes a directory per
-key; `--db /keys/fleet.db` keeps rows instead, and the rows hold the same bytes
+key; `--db ./keys/fleet.db` keeps rows instead, and the rows hold the same bytes
 the files do. Directories take about 160 keys a second, rows 206 000, so on a
 short filter the choice decides whether workers queue. One file is also easier
 to put on a volume and back up than a million directories.
@@ -50,6 +50,11 @@ The files are [`Dockerfile`](../../Dockerfile) and
 [`docker-compose.yml`](../../docker-compose.yml) at the root. The image builds
 itself: the first stage compiles, the second holds nothing but the binary on
 distroless — no shell, no package manager, no utilities.
+
+CI does not use that one. It builds the binaries once, with zig, and then packs
+them through [`Dockerfile.dist`](../../Dockerfile.dist), which has no compile
+stage at all. The result is the same image; the difference is only whether the
+sources are compiled here or had been already.
 
 For both architectures, or to run the tests inside the image:
 
@@ -159,8 +164,8 @@ As Compose, with `docker service` in place of compose:
 
 ```bash
 docker service create --name master --publish 8080:8080 \
-  --mount type=volume,source=keys,target=/keys \
-  onion-gen:latest -F abcde master --listen 0.0.0.0:8080 --store /keys
+  --mount type=volume,source=keys,target=/home/nonroot/keys \
+  onion-gen:latest -F abcde master --listen 0.0.0.0:8080 --store /home/nonroot/keys
 docker service create --name worker --replicas 5 \
   onion-gen:latest --compute cpu worker --master http://master:8080
 ```

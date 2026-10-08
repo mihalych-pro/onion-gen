@@ -13,11 +13,12 @@ scripts/bench/neon/fe_mul_bench
 # Reference implementations cloned for a comparison, and whatever a comparison
 # builds. All of it is fetched again rather than kept.
 /build/
+/dist/
 /compare/
 
 # Found keys: one directory per address, or a --db database. Never committed -
 # these are secret keys.
-/out/
+/keys/
 *.onion/
 *.db
 *.db-wal

@@ -1,9 +1,7 @@
 # A tag produces a release: six binaries, their checksums, and an image.
 #
-# The same shape as CI and for the same reasons — the kernel compiled once and
-# passed down, darwin built on a Mac because its frameworks exist nowhere else
-# — with one difference: nothing here is published until every binary exists.
-# A release missing the platform somebody came for is worse than a late one.
+# Same shape as CI, with one difference: nothing is published until every
+# binary exists. A release missing a platform is worse than a late one.
 
 name: Release
 
@@ -39,8 +37,8 @@ jobs:
           if-no-files-found: error
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
-  linux-and-windows:
-    name: binaries for linux and windows
+  linux:
+    name: binaries for linux
     needs: kernel
     runs-on: ubuntu-latest
     steps:
@@ -49,11 +47,9 @@ jobs:
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: >-
-            x86_64-unknown-linux-gnu,
-            aarch64-unknown-linux-gnu,
-            x86_64-pc-windows-gnu,
-            aarch64-pc-windows-gnullvm
+          targets: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
 
       - uses: actions/download-artifact@v4
         with:
@@ -61,15 +57,20 @@ jobs:
           path: kernel
 
       - name: Point the build at the kernel
-        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+        run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
+      # Prebuilt: `cargo install` compiles it from source, once per job.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.4
 
+      # Named for the platform they run on, not the triple that produced them.
+      # `.2.28` is the oldest glibc they will run against: RHEL 8 and its
+      # rebuilds, supported to May 2029.
       - name: Build
         run: |
           set -euo pipefail
@@ -85,12 +86,63 @@ jobs:
           }
           build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
           build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
-          build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
-          build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries-linux-windows
+          name: binaries-linux
+          if-no-files-found: error
+          path: dist/*
+
+  windows:
+    name: binaries for windows
+    needs: kernel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu, aarch64-pc-windows-gnullvm
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuda-kernel-ptx
+          path: kernel
+
+      - name: Point the build at the kernel
+        run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # Prebuilt: `cargo install` compiles it from source, once per job.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.4
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {  # <rust triple> <output name>
+            echo "::group::$2"
+            cargo zigbuild --release --target "$1"
+            triple="${1%%.*}"
+            src="target/${triple}/release/onion-gen"
+            [ -f "$src" ] || src="${src}.exe"
+            cp "$src" "dist/$2"
+            echo "::endgroup::"
+          }
+          build x86_64-pc-windows-gnu       onion-gen-windows-amd64.exe
+          build aarch64-pc-windows-gnullvm  onion-gen-windows-arm64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-windows
           if-no-files-found: error
           path: dist/*
 
@@ -112,7 +164,7 @@ jobs:
           path: kernel
 
       - name: Point the build at the kernel
-        run: echo "ONION_GEN_KERNEL_PTX=$PWD/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
+        run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -134,11 +186,10 @@ jobs:
 
   publish:
     name: the release itself
-    needs: [linux-and-windows, macos]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     steps:
-      # The whole history, because the notes are the commits since the previous
-      # tag and a shallow clone cannot see them.
+      # Whole history: the notes are the commits since the previous tag.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -152,9 +203,8 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
-      # Written here rather than left to the automatic notes: those list pull
-      # requests, and a project that commits straight to main would get an
-      # empty release. The commits are what happened either way.
+      # Not the automatic notes: those list pull requests, and this project
+      # commits straight to main.
       - name: What changed
         id: notes
         run: |
@@ -190,24 +240,23 @@ jobs:
 
   image:
     name: container image
-    # After the binaries, so a tag that cannot build does not leave a published
+    # After the binaries: a tag that cannot build must not leave a published
     # image pointing at a release that does not exist.
-    needs: [linux-and-windows, macos]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      # For the signature: cosign asks GitHub for a short-lived OIDC token and
-      # gets a certificate against it, so there is no key to hold anywhere.
+      # For the signature: cosign trades a short-lived OIDC token for a
+      # certificate, so there is no key to hold.
       id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      # Pinned to the 2.x line: cosign 3 signs in the new protobuf bundle format
-      # by default, which a 2.x client cannot verify without being told to. A 2.x
-      # signature verifies under both, and the README hands out one command.
+      # Pinned to 2.x: cosign 3 signs in the new bundle format by default, which
+      # a 2.x client cannot verify. A 2.x signature verifies under both.
       - uses: sigstore/cosign-installer@v3
         with:
           cosign-release: v2.6.5
@@ -219,10 +268,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `1.2.3`, `1.2` and `1` from the tag, plus `latest`. The shortened ones
-      # let a deployment follow patches without naming each, which is what a
-      # chart's appVersion wants. The leading `v` is dropped so the image reads
-      # `onion-gen:0.1.0`.
+      # `1.2.3`, `1.2`, `1` and `latest`. The short ones let a deployment follow
+      # patches without naming each; the leading `v` is dropped.
       - name: What to tag it
         id: meta
         uses: docker/metadata-action@v5
@@ -234,20 +281,31 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries-linux
+          path: dist
+
+      - name: What goes in
+        run: |
+          chmod +x dist/onion-gen-linux-amd64 dist/onion-gen-linux-arm64
+          ls -l dist/onion-gen-linux-*
+
+      # Dockerfile.dist packs the binaries above. No layer cache: a base plus
+      # two copies carries nothing worth keeping.
       - name: Build and publish
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.dist
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
-      # Signed by digest and not by tag: all four tags above point at the same
-      # index, and a tag can be moved later while a digest cannot.
+      # By digest, not by tag: all four tags point at the same index, and a tag
+      # can be moved later.
       - name: Sign it
         env:
           DIGEST: ${{ steps.build.outputs.digest }}

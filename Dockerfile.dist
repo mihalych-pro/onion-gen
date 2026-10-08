@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+#
+# Packs binaries CI has already built. `Dockerfile` compiles from sources and is
+# what a local build uses; the two produce the same image.
+#
+#   docker buildx build -f Dockerfile.dist --platform linux/amd64,linux/arm64 .
+#
+# Wants dist/onion-gen-linux-amd64 and dist/onion-gen-linux-arm64 in the context.
+
+# Named once, used by both stages below.
+ARG BASE=gcr.io/distroless/cc-debian13:nonroot
+
+# Runs nothing. `COPY --from` takes a stage name but not a variable, and
+# `/home/nonroot` here is the empty directory the keys one starts as.
+FROM ${BASE} AS staging
+
+# ---------------------------------------------------------------- release ---
+# distroless `cc`: a libc and nothing else. Device libraries (CUDA, OpenCL,
+# Vulkan) are opened at run time and are absent here.
+FROM ${BASE} AS release
+
+# amd64 or arm64 — how the binaries are already named.
+ARG TARGETARCH
+
+COPY --chown=root:root --chmod=0755 \
+     dist/onion-gen-linux-${TARGETARCH} /usr/local/bin/onion-gen
+
+# A mount point Docker has to create itself arrives owned by root, and the run
+# then dies with `Permission denied`.
+COPY --from=staging --chown=65532:65532 /home/nonroot /home/nonroot/keys
+
+USER 65532:65532
+WORKDIR /home/nonroot
+
+VOLUME ["/home/nonroot/keys"]
+
+# 8080: master, for workers. 9100: a worker's metrics and probes.
+EXPOSE 8080 9100
+
+ENTRYPOINT ["/usr/local/bin/onion-gen"]

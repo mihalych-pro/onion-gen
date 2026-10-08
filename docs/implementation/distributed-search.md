@@ -14,7 +14,7 @@ it was, so nothing that already calls this had to change.
 
 ```
 onion-gen -F test -d ./keys                       # a single-machine run
-onion-gen master --listen :8080 --store /keys     # the orchestrator
+onion-gen master --listen :8080 --store ./keys    # the orchestrator
 onion-gen worker --master http://master:8080      # a worker
 ```
 

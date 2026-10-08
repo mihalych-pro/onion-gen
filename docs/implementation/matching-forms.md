@@ -103,11 +103,11 @@ so `0`, `1`, `8` and `9` are not symbols at all and a range cannot produce them;
 `[0-9]` is rejected by name, and a range whose end precedes its start is rejected
 as the typo it almost certainly is.
 
-## 6. Found keys land in `./out`
+## 6. Found keys land in `./keys`
 
 A hit becomes a directory named after its address, and an easy filter produces
 them by the thousand — a twenty-second measurement of `suffix:zad`, which matches
-one candidate in 128, wrote 9 429 of them. They go under `./out` unless `-d` says
+one candidate in 128, wrote 9 429 of them. They go under `./keys` unless `-d` says
 otherwise, so a run started anywhere does not bury the working directory.
 
 An easy filter is also where throughput stops meaning anything: `suffix:zad`

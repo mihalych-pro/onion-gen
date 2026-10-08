@@ -125,7 +125,7 @@ pub struct Config {
 }
 
 /// Where found keys go when nothing says otherwise.
-pub const DEFAULT_OUT_DIR: &str = "./out";
+pub const DEFAULT_OUT_DIR: &str = "./keys";
 
 impl Default for Config {
     fn default() -> Self {
@@ -389,7 +389,7 @@ pub struct Cli {
     #[arg(long)]
     pub from_block: Option<u64>,
 
-    /// Directory to write key directories into [default: ./out].
+    /// Directory to write key directories into [default: ./keys].
     ///
     /// A found key becomes a directory named after its address, and a search
     /// left running produces them by the thousand. They go under a directory of

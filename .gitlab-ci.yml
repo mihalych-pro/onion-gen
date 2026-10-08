@@ -1,21 +1,16 @@
 # The same shape as .github/workflows/ci.yml and release.yml, in one file.
 #
-# GitLab's shared runners are Linux, so the tests run on Linux only here; zig
-# cross-builds all six platforms from the same runner. Native Windows and macOS
-# test runs live in the GitHub workflow.
+# Shared runners are Linux, so the tests run on Linux only; zig cross-builds all
+# six platforms from there. Native Windows and macOS runs live in the GitHub
+# workflow.
 #
-# Two facts drive the order. The CUDA kernel is compiled once, by a job that
-# does nothing else, and handed down as an artifact — otherwise the build script
-# compiles it again in every job below, which is the same PTX several times and
-# several chances for one of them to come out different. And the image is built
-# with rootless BuildKit rather than docker-in-docker: no privileged service
-# container, nothing listening on a socket.
+# The kernel is compiled once and passed down as an artifact. The image is
+# packed from the binaries already built — `Dockerfile.dist` — with rootless
+# BuildKit rather than docker-in-docker: no privileged container, no socket.
 
 stages: [kernel, check, build, publish]
 
-# Without this a branch that has an open merge request runs two pipelines for
-# every push — one for the branch and one for the merge request — and pays for
-# both.
+# Without this a branch with an open merge request runs two pipelines per push.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -27,21 +22,19 @@ workflow:
 variables:
   CARGO_TERM_COLOR: always
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
-  # Where the kernel job leaves its PTX and where every job below picks it up.
+  # Where the kernel job leaves its PTX, and where the rest pick it up.
   KERNEL_PTX: $CI_PROJECT_DIR/cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
 default:
-  # The image pins an older toolchain than the manifest asks for, so every job
-  # switches to stable first.
+  # The image pins an older toolchain than the manifest asks for.
   image: ghcr.io/rust-cross/cargo-zigbuild:latest
   before_script:
     - rustup toolchain install stable --profile minimal --component clippy,rustfmt
     - rustup default stable
     - rustc --version
   cache:
-    # One cache per job rather than one shared by all of them: jobs that run at
-    # the same time would otherwise each upload the whole thing under the same
-    # key and the last to finish would win.
+    # One cache per job: under a shared key, jobs running at once each upload
+    # the whole thing and the last to finish wins.
     key:
       files: [Cargo.lock]
       prefix: $CI_JOB_NAME_SLUG
@@ -49,24 +42,31 @@ default:
       - .cargo/registry/
       - .cargo/git/
       - target/
-      - cuda-kernel/target/
 
 # ------------------------------------------------------------------ kernel ---
 
 kernel:
   stage: kernel
-  # Nightly, and pinned: both the `ptx-kernel` ABI and inline assembly for this
-  # architecture are unstable, and a compiler that changed underneath would
-  # change what runs on the card with nothing being said. The version lives in
-  # cuda-kernel/rust-toolchain.toml, which rustup reads when run from there.
+  # Nightly and pinned: the `ptx-kernel` ABI and this architecture's inline
+  # assembly are unstable. Version in cuda-kernel/rust-toolchain.toml.
   before_script:
     - (cd cuda-kernel && rustup toolchain install)
+  # The only job that caches this directory; elsewhere it would be a stale copy
+  # of the file the artifact replaces.
+  cache:
+    key:
+      files: [Cargo.lock]
+      prefix: $CI_JOB_NAME_SLUG
+    paths:
+      - .cargo/registry/
+      - .cargo/git/
+      - cuda-kernel/target/
   script:
     - cd cuda-kernel
     - cargo build --release --target nvptx64-nvidia-cuda
-    # Two properties a change to the kernel can silently lose: the widening
-    # multiply has to reach the PTX, and nothing may spill — a stack frame means
-    # the point lives in off-chip memory, which costs a third of the throughput.
+    # Two properties a kernel change can lose silently: the widening multiply
+    # must reach the PTX, and nothing may spill — a stack frame puts the point
+    # in off-chip memory and costs a third of the throughput.
     - |
       set -euo pipefail
       ptx=target/nvptx64-nvidia-cuda/release/ogkernel.ptx
@@ -88,8 +88,7 @@ kernel:
 check:
   stage: check
   needs: [kernel]
-  # The build script takes the PTX from here instead of compiling it, so this
-  # job never reaches for the nightly toolchain.
+  # The build script takes the PTX instead of compiling it, so no nightly here.
   variables:
     ONION_GEN_KERNEL_PTX: $KERNEL_PTX
   script:
@@ -100,63 +99,78 @@ check:
 
 # ------------------------------------------------------------------- build ---
 
-binaries:
+# One job per target OS: a failure names the platform, the three run at once,
+# and the image waits only for linux.
+#
+# All cross-compile from the same Linux runner, macOS included: the
+# `cargo-zigbuild` image carries the macOS SDK stubs `wgpu` needs. A bare runner
+# does not, which is why GitHub builds darwin on a Mac.
+.cross:
   stage: build
-  # `needs` rather than the stage order: this starts as soon as the kernel is
-  # ready and runs beside `check` instead of after it.
+  # `needs` rather than the stage order: they run beside `check`, not after it.
   needs: [kernel]
   variables:
     ONION_GEN_KERNEL_PTX: $KERNEL_PTX
-  script:
-    - test -s "$ONION_GEN_KERNEL_PTX"
-    - |
-      rustup target add \
-        x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
-        x86_64-apple-darwin aarch64-apple-darwin \
-        x86_64-pc-windows-gnu aarch64-pc-windows-gnullvm
-    # Named for the platform they run on rather than for the triple that
-    # produced them: somebody downloading one of six files should not have to
-    # know what `aarch64-pc-windows-gnullvm` is to work out which one is theirs.
-    #
-    # The `.2.28` suffix on the linux targets sets the oldest glibc the binary
-    # will run against. That is RHEL 8 and its rebuilds, supported to May 2029
-    # and the oldest glibc anybody still gets updates for.
-    - |
-      set -euo pipefail
-      mkdir -p dist
-      build() {  # <rust triple> <output name>
-        cargo zigbuild --release --target "$1"
-        triple="${1%%.*}"
-        src="target/${triple}/release/onion-gen"
-        [ -f "$src" ] || src="${src}.exe"
-        cp "$src" "dist/$2"
-      }
-      build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
-      build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
-      build x86_64-apple-darwin             onion-gen-darwin-amd64
-      build aarch64-apple-darwin            onion-gen-darwin-arm64
-      build x86_64-pc-windows-gnu           onion-gen-windows-amd64.exe
-      build aarch64-pc-windows-gnullvm      onion-gen-windows-arm64.exe
-    - cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
   artifacts:
-    name: onion-gen-binaries
+    name: onion-gen-$CI_JOB_NAME
     expire_in: 1 week
     paths:
       - dist/
+
+# Named for the platform they run on, not the triple that produced them.
+.build-helper: &build-helper |
+  set -euo pipefail
+  test -s "$ONION_GEN_KERNEL_PTX"
+  mkdir -p dist
+  build() {  # <rust triple> <output name>
+    cargo zigbuild --release --target "$1"
+    triple="${1%%.*}"
+    src="target/${triple}/release/onion-gen"
+    [ -f "$src" ] || src="${src}.exe"
+    cp "$src" "dist/$2"
+  }
+
+linux:
+  extends: .cross
+  script:
+    - rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+    - *build-helper
+    # `.2.28`: the oldest glibc these run against — RHEL 8 and its rebuilds,
+    # supported to May 2029.
+    - |
+      build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
+      build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
+
+windows:
+  extends: .cross
+  script:
+    - rustup target add x86_64-pc-windows-gnu aarch64-pc-windows-gnullvm
+    - *build-helper
+    - |
+      build x86_64-pc-windows-gnu       onion-gen-windows-amd64.exe
+      build aarch64-pc-windows-gnullvm  onion-gen-windows-arm64.exe
+
+macos:
+  extends: .cross
+  script:
+    - rustup target add x86_64-apple-darwin aarch64-apple-darwin
+    - *build-helper
+    - |
+      build x86_64-apple-darwin   onion-gen-darwin-amd64
+      build aarch64-apple-darwin  onion-gen-darwin-arm64
 
 # ----------------------------------------------------------------- publish ---
 
 container:
   stage: publish
-  # Gating only — the image is built from the sources, not from these artefacts.
+  # Only the linux binaries and the checks: the image is packed from files that
+  # already exist, so it waits for neither the windows nor the macOS build.
   needs:
     - job: check
       artifacts: false
-    - job: binaries
-      artifacts: false
-  # Rootless BuildKit, as GitLab documents it: no dind service, no privileged
-  # runner, no docker socket. The entrypoint is dropped because the image's own
-  # one starts the daemon and never returns, which would hang the job.
+    - job: linux
+  # Rootless BuildKit, as GitLab documents it. The entrypoint is dropped: the
+  # image's own one starts the daemon and never returns.
   image:
     name: moby/buildkit:rootless
     entrypoint: [""]
@@ -172,15 +186,18 @@ container:
       printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}\n' \
         "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" \
         > "$HOME/.docker/config.json"
+    - |
+      set -eu
+      chmod +x dist/onion-gen-linux-amd64 dist/onion-gen-linux-arm64
+      ls -l dist/onion-gen-linux-*
     # The tags, by what produced the pipeline:
     #
-    #   a tag v1.2.3  ->  1.2.3, 1.2, 1, latest
-    #   default branch ->  <branch>, <sha>, latest
-    #   any other branch -> <branch>, <sha>
+    #   a tag v1.2.3     ->  1.2.3, 1.2, 1, latest
+    #   default branch   ->  <branch>, <sha>, latest
+    #   any other branch ->  <branch>, <sha>
     #
-    # The shortened version tags let a deployment follow patches without naming
-    # each. `latest` is only ever moved by the default branch or a release, so a
-    # side branch cannot take it over.
+    # The short tags let a deployment follow patches without naming each. Only
+    # the default branch or a release moves `latest`.
     - |
       set -eu
       img="$CI_REGISTRY_IMAGE"
@@ -194,39 +211,33 @@ container:
       else
         names="$img:$CI_COMMIT_REF_SLUG,$img:$CI_COMMIT_SHA"
       fi
-      # A merge request builds the image and stops there, so nothing proposed
-      # from outside can land in the registry.
+      # A merge request builds and stops there.
       if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
         push=false
       else
         push=true
       fi
-      # The layer cache is read by everyone and written only by what may move
-      # `latest`; a side branch reads it but cannot replace it.
-      cache_out=""
-      if [ "$push" = true ] && \
-         { [ -n "${CI_COMMIT_TAG:-}" ] || [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ]; }; then
-        cache_out="--export-cache type=registry,ref=$img:buildcache,mode=max"
-      fi
       echo "tags: $names"
       echo "push: $push"
-      # Both architectures from one amd64 runner and no emulation: every stage
-      # that runs a command is pinned to $BUILDPLATFORM and cross-compiles with
-      # zig, and the final stage only copies files in.
+      # Dockerfile.dist packs what the job above built: nothing compiles, so no
+      # layer cache. Both architectures come off one amd64 runner without
+      # emulation — the published stage only copies files in.
       buildctl-daemonless.sh build \
         --frontend dockerfile.v0 \
         --local context=. \
         --local dockerfile=. \
+        --opt filename=Dockerfile.dist \
         --opt platform=linux/amd64,linux/arm64 \
         --output "type=image,\"name=$names\",push=$push" \
-        --import-cache type=registry,ref=$img:buildcache \
-        $cache_out \
         --metadata-file metadata.json
-      # What the signing job needs. The digest names the index the tags above
-      # all point at.
-      digest=$(sed -n 's/.*"containerimage.digest"[^"]*"\([^"]*\)".*/\1/p' metadata.json)
-      test -n "$digest"
-      echo "IMAGE_REF=$img@$digest" > image.env
+      # What the signing job needs: the index every tag above points at. A
+      # merge request pushed nothing, but the file must exist for the report.
+      : > image.env
+      if [ "$push" = true ]; then
+        digest=$(sed -n 's/.*"containerimage.digest"[^"]*"\([^"]*\)".*/\1/p' metadata.json)
+        test -n "$digest"
+        echo "IMAGE_REF=$img@$digest" > image.env
+      fi
       cat image.env
   artifacts:
     reports:
@@ -235,13 +246,11 @@ container:
 sign:
   stage: publish
   needs: [container]
-  # cosign's own image is built on distroless and has no shell, which GitLab
-  # needs to run a job at all, so the binary is fetched and checked here.
+  # cosign's own image is distroless and has no shell, which GitLab needs, so
+  # the binary is fetched and checked here.
   #
-  # Pinned to the 2.x line on purpose. cosign 3 signs in the new protobuf bundle
-  # format by default, and a 2.x client cannot verify that without being told
-  # to; a 2.x signature verifies under both. The README hands out one verify
-  # command, and it has to work for whichever version somebody already has.
+  # Pinned to 2.x: cosign 3 signs in the new bundle format by default, which a
+  # 2.x client cannot verify. A 2.x signature verifies under both.
   image: alpine:3.22
   before_script: []
   cache: []
@@ -249,14 +258,12 @@ sign:
     GIT_STRATEGY: none
     COSIGN_VERSION: v2.6.5
     COSIGN_SHA256: c3b4f5410e608af03a5eb0aaac84a4313d8da131248e08ff1759ac70c79d1644
-  # Keyless where it can be: GitLab issues a short-lived token, Fulcio returns a
-  # certificate against it, and the signature records which pipeline and commit
-  # produced the image. Nothing is stored and there is no key to leak.
+  # Keyless where it can be: a short-lived token buys a certificate, and the
+  # signature records the pipeline and commit. No key to leak.
   #
-  # Fulcio only trusts gitlab.com as an issuer, so a self-managed instance has
-  # to sign with a key instead: set COSIGN_PRIVATE_KEY and COSIGN_PASSWORD as
-  # masked CI variables and this job uses them. With neither it is skipped, so
-  # the pipeline does not fail over a signature it cannot produce.
+  # Fulcio trusts gitlab.com only, so a self-managed instance signs with a key:
+  # set COSIGN_PRIVATE_KEY and COSIGN_PASSWORD as masked variables. With
+  # neither, the job is skipped rather than failing the pipeline.
   id_tokens:
     SIGSTORE_ID_TOKEN:
       aud: sigstore
@@ -275,8 +282,7 @@ sign:
       echo "${COSIGN_SHA256}  /usr/local/bin/cosign" | sha256sum -c -
       chmod +x /usr/local/bin/cosign
     - cosign login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    # Signed by digest and not by tag: a tag can be moved onto another image
-    # later, a digest cannot.
+    # By digest, not by tag: a tag can be moved onto another image later.
     - |
       set -eu
       if [ -n "${COSIGN_PRIVATE_KEY:-}" ]; then
@@ -287,20 +293,36 @@ sign:
         cosign sign --yes "$IMAGE_REF"
       fi
 
-# A release keeps its files after the pipeline's artefacts expire, so they go to
-# the package registry rather than being linked from a job that will be cleaned
-# up in a week.
+# The six files meet here so one `SHA256SUMS` covers all of them.
+checksums:
+  stage: publish
+  needs: [linux, windows, macos]
+  image: alpine:3.22
+  before_script: []
+  cache: []
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+  artifacts:
+    name: onion-gen-binaries
+    expire_in: 1 week
+    paths:
+      - dist/
+
+# Release files outlive the pipeline's artefacts, so they go to the package
+# registry rather than a job that is cleaned up in a week.
 release-assets:
   stage: publish
-  needs: [binaries]
+  needs: [checksums]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   image: alpine:3.22
   before_script: []
   cache: []
   variables:
-    # The notes are the commits since the previous tag, and the default shallow
-    # clone cannot see them.
+    # The notes are the commits since the previous tag; a shallow clone cannot
+    # see them.
     GIT_DEPTH: "0"
   script:
     - apk add --no-cache git curl

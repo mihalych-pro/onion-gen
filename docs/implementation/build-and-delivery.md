@@ -101,13 +101,17 @@ stable toolchain; without that the build script compiles the kernel again in
 each job, which is the same PTX several times over and several chances for one
 of them to come out different.
 
-The image is built for both architectures from one amd64 runner and needs no
-emulation: every stage in the Dockerfile that runs a command is pinned to
-`$BUILDPLATFORM` and cross-compiles with zig, and the stage that is actually
-published only copies files in. GitHub uses buildx; GitLab uses rootless
-BuildKit through `buildctl-daemonless.sh`, which wants neither a privileged
-runner nor a docker-in-docker service. Both sign the published image by digest
-with cosign, keyless.
+The image is packed from the binaries rather than compiled again: both
+pipelines build all six once, with zig, and then hand the two linux ones to
+`Dockerfile.dist`, which has no compile stage. `Dockerfile` still builds from
+sources and is what a local build uses. Either way both architectures come off
+one amd64 runner with no emulation — the only stages that run a command are
+pinned to `$BUILDPLATFORM`, and the published stage just copies files in.
+
+GitHub uses buildx; GitLab uses rootless BuildKit through
+`buildctl-daemonless.sh`, which wants neither a privileged runner nor a
+docker-in-docker service. Both sign the published image by digest with cosign,
+keyless.
 
 The GitHub workflows have run. **`.gitlab-ci.yml` has not**: there is no GitLab
 remote yet, so it is valid YAML and nothing more. Note also that keyless signing

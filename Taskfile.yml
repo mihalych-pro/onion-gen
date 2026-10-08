@@ -178,16 +178,16 @@ tasks:
     cmds:
       # Checks the files, the clamping, the derivation and the address, the
       # last of those against `tor-hscrypto` rather than against ourselves.
-      - ./target/release/onion-gen verify {{.DIR | default "./out"}}
+      - ./target/release/onion-gen verify {{.DIR | default "./keys"}}
 
   verify:keys:python:
     desc: The same keys through the independent Python checker. Pass DIR=path.
     cmds:
       # A second opinion from outside the binary: a different language and a
       # different ed25519, so a defect would have to exist in both to pass.
-      - ./scripts/verify/verify-onion-address.py {{.DIR | default "./out"}}
+      - ./scripts/verify/verify-onion-address.py {{.DIR | default "./keys"}}
 
   verify:tor:
     desc: Check found keys with tor, network disabled. Pass DIR=path.
     cmds:
-      - ./scripts/verify/verify-with-tor.sh {{.DIR | default "./out"}}/*.onion
+      - ./scripts/verify/verify-with-tor.sh {{.DIR | default "./keys"}}/*.onion
