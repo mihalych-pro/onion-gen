@@ -24,25 +24,24 @@ error both show the connection string with it replaced by `***`.
 
 ## Which to use
 
-| Store | Finds a second | Needs |
+| Store | Needs | Speed |
 |---|---|---|
-| directories | 162 | nothing |
-| SQLite | 244 000 | nothing |
-| PostgreSQL | 32 000 | a server |
-| MySQL | 22 700 | a server |
+| directories | nothing | slowest by a wide margin |
+| SQLite | nothing | fastest |
+| PostgreSQL | a server | fast |
+| MySQL | a server | fast |
 
-Measured with `cargo bench --bench store-rate`; the servers were containers on
-the same machine, so a real network will be slower and the ordering will not
-change.
+The [README](../../README.md) gives the measured rates. To measure them on your
+own machine, run `cargo bench --bench store-rate`.
 
-A directory per key is a directory, three files and an `fsync`. One RTX 4060 on
-a four-symbol filter finds some 950 keys a second, which that cannot take and
-any of the other three can. The program works the expected rate out at startup
+A directory for each key is a directory, three files and an `fsync`. A device
+on a short filter finds keys far faster than that can take them, and any of the
+other three stores keeps up. The program works the expected rate out at startup
 and says so.
 
-Use a server when more than one thing needs to read the keys, when the keys
-should live somewhere that is already backed up, or when a fleet's master would
-otherwise hold the only copy. Use SQLite otherwise: it is a file, it needs no
+Use a server when more than one thing must read the keys, when the keys belong
+somewhere that is already backed up, or when the master of a fleet would
+otherwise hold the only copy. Use SQLite otherwise. It is a file, it needs no
 account, and it is the fastest of the four.
 
 ## What the schema is
@@ -198,7 +197,7 @@ A master publishes what its store is doing, labelled by kind:
 | `onion_gen_store_connections` | connections held open; a file counts as one |
 | `onion_gen_store_connections_idle` | of those, how many are not in use |
 | `onion_gen_store_rows_total` | keys written; a repeat is not counted |
-| `onion_gen_store_bytes_total` | key material written, 160 bytes a key |
+| `onion_gen_store_bytes_total` | key material written, 160 bytes for each key |
 | `onion_gen_store_batches_total` | batches committed |
 | `onion_gen_store_failures_total` | batches the store refused |
 

@@ -14,30 +14,30 @@ onion-gen worker --master http://master:8080      # a worker
 ## What every platform has to answer
 
 **Where the master is.** A worker goes to it and accepts no incoming
-connections, so only the master needs a known address. That turned out not to
-be theory: when this was checked across two machines the routing between them
-was one-way, and the fleet came together only because the worker is the side
-that dials.
+connection, so only the master needs a known address. This is not a formality.
+Routing between two machines is often one-way, and a fleet comes together in
+that case only because the worker is the side that dials.
 
 **Where the master's store is.** It is the one thing whose loss cannot be
 undone — the same address will not turn up again soon. A volume, not the
 container's own layer.
 
-**Whether it is directories or a database.** `--store` makes a directory per
-key; `--db ./keys/fleet.db` keeps rows instead, and the rows hold the same bytes
-the files do. Directories take about 160 keys a second, rows 206 000, so on a
-short filter the choice decides whether workers queue. One file is also easier
-to put on a volume and back up than a million directories.
+**Whether it is directories or a database.** `--store` makes a directory for
+each key. `--db ./keys/fleet.db` keeps rows instead, and the rows hold the same
+bytes that the files do. A database takes finds far faster than directories do,
+so on a short filter this choice decides whether workers queue. One file is
+also easier to put on a volume and to back up than a million directories. See
+[databases.md](databases.md).
 
 **The worker's buffer.** Finds the master has not taken yet sit on the worker
 until it acknowledges them. In normal running it is empty; the volume is there
 so that a restart during an outage does not take them with it.
 
-**Filter length.** A fleet will not take a filter shorter than four symbols.
-But four is a floor rather than a sufficiency: one RTX 4060 on a four-symbol
-filter produces 954 finds a second, and a directory store takes about 160. The
-program works the expected rate out at startup and says it, against whichever
-store it was given — a database clears 954 a second with room to spare.
+**Filter length.** A fleet refuses a filter that is too short for the store
+it has. A short filter on a fast device finds keys faster than a directory
+store can take them. The program works the expected rate out at startup and
+compares it with the store that it was given, and it says what it found. A
+database raises that ceiling by a wide margin.
 
 ## Docker Compose — verified
 
@@ -84,9 +84,9 @@ and `docker stop` as the operator's decision and deliberately does not override
 them. "The worker crashed" and "the worker was stopped" behave differently, and
 that is right.
 
-*Without a restart policy the fleet quietly shrinks.* The first version of
-`docker-compose.yml` had none: a killed worker's lease came back as designed,
-and there was nobody to take it.
+*A restart policy is not optional.* Without one the fleet quietly shrinks. The
+lease of a killed worker comes back to the queue as designed, and nobody is
+left to take it.
 
 ## Kubernetes — the chart is written, **not verified on a cluster**
 

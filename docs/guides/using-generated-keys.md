@@ -2,10 +2,9 @@
 
 **English** | [Русский](using-generated-keys.ru.md)
 
-What to do with the `<address>.onion/` directory the generator produced, so that
-it becomes a working onion service.
-
-This document covers operation only.
+This document tells you what to do with the `<address>.onion/` directory that
+the generator made, so that it becomes a working onion service. It covers
+operation only.
 
 ## Which of the three files you need
 
@@ -21,7 +20,7 @@ and the address from it and rewrites the other two files. Copying the whole
 directory is still more convenient — it shows which address is expected, so a
 mismatch is immediately visible.
 
-The converse does not hold: `hs_ed25519_public_key` without the secret key is
+The opposite is not true. `hs_ed25519_public_key` without the secret key is
 useless.
 
 ## If the keys are in a database
@@ -67,9 +66,9 @@ The tor user name varies: `debian-tor` on Debian and Ubuntu, `tor` on Fedora and
 Arch, `_tor` on OpenBSD and macOS/Homebrew. Check with `ps -o user= -C tor` or
 in the service unit file.
 
-The permissions are mandatory: tor **refuses** to start if the service directory
-is accessible to anyone but its owner. That is not pedantry — the directory holds
-a key granting full control over the address.
+The permissions are mandatory. tor **refuses** to start when anyone but the
+owner can read the service directory. This is not pedantry: the directory holds
+a key that gives full control over the address.
 
 ### 2. Declare it in `torrc`
 
@@ -106,7 +105,7 @@ sudo journalctl -u tor -n 50
 
 ## Option 2: no files, through the ControlPort
 
-Suits ephemeral services and applications that drive tor themselves.
+This suits short-lived services, and applications that drive tor themselves.
 
 The `ADD_ONION` command takes the secret key in base64 — **without** the 32-byte
 file prefix, i.e. exactly 64 bytes:
@@ -142,9 +141,9 @@ printf 'AUTHENTICATE ""\r\nADD_ONION ED25519-V3:%s Port=80,127.0.0.1:8080\r\nQUI
 The reply contains `250-ServiceID=<address without .onion>`, which must match
 the directory name.
 
-Such a service lives as long as the control connection is held (or until
-`DEL_ONION`) and is **not** persisted to disk. Add the `Detach` flag if the
-service should survive the connection closing.
+Such a service lives while the control connection stays open, or until
+`DEL_ONION`. tor does **not** write it to disk. Add the `Detach` flag when the
+service must survive the close of the connection.
 
 ## Option 3: a container
 
@@ -176,8 +175,8 @@ with instructions for running it.
 
 ## Serving a site through nginx
 
-The usual arrangement: tor listens on the onion service's virtual port and
-proxies to a local nginx, and nginx serves the site.
+In the usual arrangement tor listens on the virtual port of the onion service
+and proxies to a local nginx. nginx then serves the site.
 
 ### torrc
 
@@ -230,8 +229,8 @@ server {
         proxy_set_header X-Forwarded-Proto http;
 
         # Do NOT forward a real IP: an onion client has none, and $remote_addr
-        # here is always 127.0.0.1 - the header would only create a false
-        # impression that you know where the request came from.
+        # here is always 127.0.0.1. The header would only suggest that you
+        # know where the request came from.
     }
 }
 ```
@@ -291,10 +290,9 @@ first twelve.
 | tor derives the address from `hs_ed25519_secret_key` alone | verified |
 | tor's address matches the generator's | verified |
 
-The last two were verified on tor 0.4.9.12 without touching the network: the
-service directory was left holding **only** `hs_ed25519_secret_key`, tor was
-started with `DisableNetwork 1`, and it created `hs_ed25519_public_key` and
-`hostname` by itself:
+To check the last two yourself, put **only** `hs_ed25519_secret_key` in the
+service directory and start tor with `DisableNetwork 1`. tor creates
+`hs_ed25519_public_key` and `hostname` by itself, and it touches no network:
 
 ```
 $ ls /tmp/tortest/hs        # before starting
@@ -310,14 +308,14 @@ a6k4fysykhkhkob5uhfrooihjdkgoriodvtydtcdgnnwolzzvxvlnyqd.onion   ← matched
 
 This also confirms that only the secret key is mandatory among the three files.
 
-Incidentally, tor sets mode `0600` on **every** file in the directory — stricter
-than the generator, which leaves the public key and `hostname` readable. It also
-creates an `authorized_clients/` subdirectory for client authorisation. Do not be
-alarmed by the changed permissions and the extra directory: that is tor working
-normally, not key corruption.
+tor sets mode `0600` on **every** file in the directory. That is stricter than
+the generator, which leaves the public key and `hostname` readable. tor also
+creates an `authorized_clients/` subdirectory for client authorisation. The
+changed permissions and the extra directory are tor working normally. They are
+not key corruption.
 
-The check did not require publishing the service to the Tor network: the
-`DisableNetwork 1` flag stops tor before the descriptor is announced.
+This check publishes nothing. The `DisableNetwork 1` flag stops tor before it
+announces the descriptor.
 
 ## Onionbalance
 
@@ -341,7 +339,9 @@ format is the same and needs no separate preparation.
 
 ## Rotating a key
 
-A compromised address cannot be revoked — it can only be abandoned. The plan:
-generate a new address, run both in parallel, announce the move, and switch the
-old one off after a while. Clients who know only the old address will be lost —
-which is why the key is worth protecting.
+You cannot revoke a compromised address. You can only abandon it. The steps
+are: generate a new address, run both at the same time, announce the move, and
+switch the old one off after a while.
+
+You will lose the clients who know only the old address. That is why the key is
+worth protecting.

@@ -2,151 +2,115 @@
 
 **English** | [Русский](cuda-path.ru.md)
 
-The graphics device as a second source of candidates, and the answer to the
-question the project has carried unanswered since it began.
+This document describes the device as a second source of candidates, through
+CUDA on cards of NVIDIA.
 
-## 1. The criterion, and what it turned out to be
+The [README](../../README.md) gives the measured speeds. This document gives the
+method and the limits.
 
-, set the bar before there
-was a machine to try it on: a kernel running the `+8G` chain with batch
-inversion had to reach **140 million candidates a second** on one device.
+## 1. The criterion
 
-Measured on an NVIDIA RTX 4060:
+We set the bar before we had a machine to try it on. A kernel that runs the
+`+8G` chain with batch inversion had to reach 140 million candidates a second on
+one device.
 
-| | candidates |
-|---|---|
-| chain with batch inversion | 550 M/s |
-| the same without the inversion, for comparison | 1470 M/s |
-| the criterion | 140 M/s |
+The kernel passed that bar by a wide margin on an NVIDIA RTX 4060. The device is
+also much faster than the processor of the same machine.
 
-In the product, on the machine that holds the card: **553 M/s with the device
-against 77 M/s with its processor alone**, a factor of 7.2. Against the
-reference implementation's best figure of about 30 M/s, eighteen.
+## 2. The build needs no vendor toolkit
 
-## 2. Nothing about building this needs a vendor toolkit
+This was the property most at risk, and it survived.
 
-This was the property most at risk and it survived intact.
+The kernel is written in Rust and compiles to PTX through the
+`nvptx64-nvidia-cuda` target. The host resolves the driver at run time and does
+not link it. Neither step needs CUDA on the machine. We build the whole program
+on `darwin/arm64`, which has no vendor driver, and ship a binary.
 
-The kernel is written in Rust and compiled to PTX through the
-`nvptx64-nvidia-cuda` target. The host resolves the driver at run time rather
-than linking it. Neither needs CUDA installed: the whole thing is built on
-`darwin/arm64`, which has no vendor driver at all, and shipped as a binary.
+The kernel needs a nightly toolchain. Both the `ptx-kernel` ABI and inline
+assembly for this architecture are still unstable on Rust 1.99, which we checked
+and did not assume. The kernel is therefore a crate of its own, and the program
+stays on stable.
 
-The kernel does need a nightly toolchain — both the `ptx-kernel` ABI and inline
-assembly for this architecture are still unstable on 1.99, checked rather than
-assumed. That is why the kernel is a crate of its own: the program itself stays
-on stable. The main crate's build script compiles it on every build and takes
-the PTX through `OUT_DIR`, so a kernel and the PTX in a binary cannot drift
-apart. The compiled form is not in the repository, because a copy there could
-only ever be the stale one. None of this needs a CUDA toolkit; the kernel is
-compiled by `rustc` and the driver is opened at run time.
+The build script of the main crate does one of two things. It compiles the
+kernel and takes the PTX through `OUT_DIR`. Or it takes a PTX that already
+exists, through the `ONION_GEN_KERNEL_PTX` variable. The second form lets the
+pipelines compile the kernel once and give the same file to every job below. The
+compiled PTX is not in the repository, because a copy there could only be the
+stale one.
 
 ## 3. What the arithmetic cost to write well
 
-The backend emits a 32x32 into 64 multiply when a value feeds one product, and
-falls back to an emulated 64-bit multiply when it feeds ten — which is exactly
-the shape of a ten-limb schoolbook product. A five-line probe confirmed both
-halves of that. Writing the accumulation as inline PTX gives 100 single
-instructions instead of 92 emulated ones, and measures **1.67x**:
+The backend emits a 32x32 into 64 multiply when a value feeds one product. It
+falls back to an emulated 64-bit multiply when the value feeds ten products.
+That is the exact shape of a ten-limb schoolbook product. A five-line probe
+confirmed both halves of this.
 
-| | field multiplies |
-|---|---|
-| portable Rust | 7.60 G/s |
-| inline PTX | 12.69 G/s |
+The accumulation is therefore written as inline PTX. That gives 100 single
+instructions in place of 92 emulated ones, and it is much faster.
 
-Portability loses nothing by this. The kernel compiles to PTX, so it is bound
-to one vendor whatever it is written in; other vendors are reached through a
-portable path that is written separately. The portable version stays as the
-reference the fast one is checked against, the same arrangement the processor
-path uses.
+Portability loses nothing here. The kernel compiles to PTX, so it belongs to one
+vendor whatever language it is written in. Other vendors go through the portable
+path, which is written separately. The portable version stays as the reference
+that we check the fast one against. The processor path uses the same
+arrangement.
 
 ## 4. The split between device and host
 
 The device rules candidates out. It never rules them in.
 
-| structure | on the device | why |
+| Structure | On the device | Reason |
 |---|---|---|
 | prefix bitmap | yes | a flat array of words |
-| suffix and pattern bitmaps | could be | the same structure |
+| suffix and pattern bitmaps | possible | the same structure |
 | substring automaton | no | a pointer structure |
 | the filters themselves | no | strings and vectors |
 
-So a set of filters that builds no prefix bitmap — a dictionary of substrings,
-say — gets no device, and the program says so at the start rather than
-promising one and going quiet.
+A filter set that builds no prefix bitmap therefore gets no device. A dictionary
+of substrings is one such set. The program says so at the start. It does not
+promise a device and then go quiet.
 
-What the link costs was measured by varying how much passes:
-
-| candidates passed | throughput |
-|---|---|
-| all of them | 563.9 M/s |
-| one in 256 | 573.8 M/s |
-| none | 618.0 M/s |
-
-Nine percent between everything and nothing, and a real search passes one in
-millions. The boundary will not become the limit.
+We measured the cost of the link by changing how many candidates cross it. The
+difference between all of them and none of them is small, and a real search
+passes one candidate in millions. The boundary will not become the limit.
 
 ## 5. Correctness
 
-An error in device arithmetic shows up as wrong keys, not as a crash, so the
-checks are the load-bearing part.
+An error in device arithmetic gives wrong keys, not a crash. The checks are
+therefore the load-bearing part.
 
-- Candidates from the device match the processor **byte for byte** on the same
+- Candidates from the device match the processor byte for byte from the same
   starting point.
-- Every survivor was re-derived on the host from its offset alone, by scalar
-  multiplication, and compared: this is what proves the bookkeeping that turns
-  a thread and a step into a position in the chain.
-- Keys found by the device pass the independent verifier and tor with
+- The host derives each survivor again from its offset alone, by scalar
+  multiplication, and compares the two. This proves the bookkeeping that turns a
+  thread and a step into a position in the chain.
+- Keys that the device finds pass the independent verifier and tor with
   `DisableNetwork 1`.
 
-The byte-for-byte check earned its place immediately: it caught a buffer layout
-changed in the kernel and not in the host.
+The byte-for-byte check is the one that finds a buffer layout changed in the
+kernel and not in the host.
 
-## 6. A measurement that lied, and what it cost
+## 6. What is not done
 
-The first harness timed the allocation of gigabyte buffers and the copy of
-results across the bus along with the kernel. It reported 65 M/s — below the
-criterion — and no change to the kernel moved it. Coalescing, occupancy and
-register pressure were all suspected and adjusted before the harness itself
-was.
+- **Only the prefix bitmap travels to the device.** The suffix and pattern
+  bitmaps could travel too. The substring automaton would need a flat form
+  first.
+- **The device does not write keys.** It reports positions, and the host derives
+  the key. This is correct while hits are rare, and it would be wrong if they
+  were not.
 
-The number was the speed of the link. With allocation and transfer moved
-outside the timing the same kernel measured 550 M/s.
+Other vendors are no longer on this list. Cards of AMD and Intel go through the
+portable path and through OpenCL, which both exist. See
+[portable-gpu.md](portable-gpu.md) and [opencl.md](opencl.md).
 
-The rule worth keeping: when a figure refuses to respond to changes that must
-affect it, the harness is the first suspect, not the code.
+## 7. Acceptance
 
-## 7. What is not done
+The acceptance run uses one ten-symbol filter on the machine that holds the
+card. It takes the best of three for each path, and it runs both paths in one
+sitting.
 
-- **Only the vendor path exists.** AMD and Intel are reached through the
-  portable path, which is written separately and is not written yet.
-- **Only the prefix bitmap travels.** The suffix and pattern bitmaps could,
-  and the substring automaton would need flattening first.
-- **The device does not write keys.** It reports positions and the host derives
-  the key, which is right while hits are rare and would not be if they were not.
+Both rows come from the same binary, with a flag between them. The comparison is
+therefore between two paths and not between two builds.
 
-## 8. What carrying the device path costs the processor path
-
-Paired against the commit before this path existed, eight pairs, on a machine with no
-device: prefix search measures 0.996 and a thousand-filter dictionary 0.995,
-with the new build ahead in one pair of eight each time. Small, and consistent
-in direction.
-
-This time it is real work rather than code layout, which was checked rather
-than assumed: instructions retired per candidate go from about 1620 to about
-1630, half a percent, while the instructions-per-cycle figure does not move.
-Carrying the device path in the same binary costs the processor path half a
-percent, and that is the honest figure.
-
-## 9. Acceptance
-
-On the machine that holds the card, one ten-symbol filter, best of three each,
-both paths in one sitting:
-
-| path | candidates |
-|---|---|
-| processor only | 80.6 M/s |
-| processor and device | 585.3 M/s |
-
-A factor of 7.26, from the same binary with a flag between them, so the
-comparison is of paths rather than of builds.
+The device path is in the same binary as the processor path, and it costs the
+processor path almost nothing. The cost is a few more instructions for each
+candidate, and the instructions-per-cycle figure does not move.

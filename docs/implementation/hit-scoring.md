@@ -2,26 +2,27 @@
 
 **English** | [Русский](hit-scoring.ru.md)
 
-Scoring finds.
+This document describes how the program scores a find, and why it scores it that
+way.
 
-## 1. Why rarity rather than taste
+## 1. Rarity, and not taste
 
-A broad filter produces finds in a stream: `contains:abc` is one find in 630
-candidates, which over a run is thousands of directories. Which of them is
-better can be argued about indefinitely, so the question was replaced with one
-that can be measured: **"prettier" means "rarer"**.
+A broad filter produces finds in a stream. The filter `contains:abc` matches
+about one candidate in 630, which over a run is thousands of directories. Anyone
+can argue about which of them is better, so we replaced that question with one
+that we can measure. **"Prettier" means "rarer".**
 
-The replacement is not cosmetic. It lets a feature fail to qualify — and one
-did, as below.
+The replacement is not cosmetic. It lets a feature fail to qualify, and one
+feature did. See the end of section 2.
 
 ## 2. The features and their measured rarity
 
-Five million random addresses produced by the same encoder the product uses, so
-the checksum and the fixed tail are real (`benches/score-calibration.rs`,
-section 1). The last two symbols of an address are fixed by the protocol and
-take no part in any feature.
+The calibration uses five million random addresses from the encoder that the
+program itself uses, so the checksum and the fixed tail are real. The code is in
+`benches/score-calibration.rs`, section 1. The protocol fixes the last two
+symbols of an address, and no feature uses them.
 
-| family | level | share of addresses | bits |
+| Family | Level | Share of addresses | Bits |
 |---|---:|---:|---:|
 | run of identical symbols | 3 | 4.8% | 4.4 |
 | | 4 | 0.15% | 9.4 |
@@ -37,20 +38,23 @@ take no part in any feature.
 | | 52 | 0.12% | 9.7 |
 | | 54 | 0.0017% | 15.9 |
 
-Levels past the measured range are extrapolated only where the slope is a fact
-rather than a curve fit. One more symbol in a run is one more symbol that had
-to come up the same, so 32 times rarer, so five more bits; the measured steps
-are +5.0 and +4.9, which is the alphabet saying so rather than a fit. A tiling
-unit is two symbols, hence ten. Palindromes have no such slope — odd and even
-lengths behave differently — so that family saturates at its last measured
-level and says so, instead of inventing a number.
+The program extrapolates past the measured range only where the slope is a fact
+and not a curve fit. One more symbol in a run is one more symbol that had to come
+up the same. That is 32 times rarer, so five more bits, and the measured steps
+are +5.0 and +4.9. The alphabet says this, and no fit is necessary. A tiling unit
+is two symbols, so the step is ten bits.
 
-### The feature that did not qualify
+Palindromes have no such slope, because odd and even lengths behave differently.
+That family therefore saturates at its last measured level and says so. It does
+not invent a number.
 
-"An address without digits reads better" is true, and worth 15.9 bits. "A long
-stretch of letters" sounds like the same claim; the measurement says otherwise:
+### A feature that is deliberately absent
 
-| letters-only run | share of addresses |
+"An address without digits reads better" is true, and the table above grades it.
+"A long stretch of letters" sounds like the same claim, and it is not a feature
+here:
+
+| Letters-only run | Share of addresses |
 |---|---:|
 | 10+ | 79% |
 | 12+ | 60% |
@@ -58,126 +62,108 @@ stretch of letters" sounds like the same claim; the measurement says otherwise:
 | 16+ | 28% |
 | 20+ | 11% |
 
-Up to 14 symbols the feature describes most addresses rather than the good
-ones. Above 16 it is no longer too common — and there the second reason
-decides: it is not a second feature but the same one. The stretch and the digit
-count are two views of the same sparsity, and keeping both would count it
-twice. The count is kept because it grades further: 1.8 to 15.9 bits against
-1.9 to 3.1.
+Up to 14 symbols such a run describes most addresses, and not the good ones.
+Above 16 symbols it is no longer too common, and there a second reason decides.
+It is not a second feature. It is the same one. The run and the digit count are
+two views of one sparsity, and to keep both would count that sparsity twice. The
+program keeps the count, because the count grades further.
 
-## 3. Placement is the only part that knows what was asked for
+## 3. Placement is the only part that knows the filter
 
-For a form that could match in several places the value of where it landed is
-derived rather than measured: a form with `p` placements lands at or before
-offset `k` in about `(k + 1) / p` of the addresses it matches at all, so
-landing at the very front is worth `log2(p)` bits. For `contains:abc` that is
-5.6 bits at the first symbol and 0.03 at the last.
+For a form that could match in several places, the program derives the value of
+where the form landed. It does not measure it. A form with `p` placements lands
+at or before offset `k` in about `(k + 1) / p` of the addresses that it matches
+at all. To land at the very front is therefore worth `log2(p)` bits.
 
-A form anchored to the start has one placement and contributes nothing, which
-is correct rather than a special case.
+A form anchored to the start has one placement and contributes nothing. That is
+correct, and it is not a special case.
 
 ## 4. What it costs
 
-| | ns |
-|---|---:|
-| run of identical symbols | 33 |
-| two-symbol tiling | 97 |
-| palindrome | 111 |
-| digit count | 10 |
-| **all together** | **254** |
-| **writing the key to disk** | **5 400 000** |
+Scoring runs only on a find, and a find already writes a key to disk. A disk
+write is many thousands of times more expensive than all four feature tests
+together. The correct comparison is therefore against the write, and not against
+zero.
 
-The second number is what to compare against, not zero: scoring is 0.005% of
-what a find already spends. The palindrome scan is quadratic and was the only
-candidate for removal on cost; at these numbers the question does not arise.
+The palindrome scan is quadratic, and it was the only candidate for removal on
+cost. Against the write, the question does not arise.
 
-The disk figure deserves attention of its own: **185 keys per second**. With a
-three-symbol filter at 150 M/s, finds arrive at 4 600 a second, so the disk
-becomes the bottleneck twenty-five times sooner than the matcher does. That is
-what makes the write threshold useful — it saves the write, not the scoring.
+The disk is also why the write threshold is useful. On a short filter, finds
+arrive much faster than a disk can take them, so the disk becomes the limit long
+before the match test does. The threshold saves the write, not the scoring.
 
-## 5. Why the total is a sort key and not a probability
+## 5. The total is a sort key, not a probability
 
-The families overlap: a run of three identical symbols **is** a palindrome of
-three. Adding their rarities counts one event twice. On top of that the search
-is for whichever feature happens to be present, which is the
-multiple-comparisons mistake in its usual form.
+The families overlap. A run of three identical symbols *is* a palindrome of
+three, so to add their rarities counts one event twice. The search also takes
+whichever feature happens to be present, which is the multiple-comparisons
+mistake in its usual form.
 
-How much this matters is visible in the calibration itself:
+The calibration shows how much this matters:
 
-| score | measured share | one address in | "bits" would say |
+| Score | Measured share | One address in | A sum of bits would say |
 |---:|---:|---:|---:|
 | 2 | 32% | 3 | 4 |
 | 8 | 2.1% | 47 | 256 |
 | 12 | 0.40% | 252 | 4 096 |
 | 16 | 0.059% | 1 704 | 65 536 |
-| 20 | 0.0087% | **11 442** | **1 048 576** |
+| 20 | 0.0087% | 11 442 | 1 048 576 |
 | 24 | 0.00094% | 106 383 | 16 777 216 |
 
-The sum overstates rarity by nearly a hundredfold. So what is shown to anyone
-is not the sum but the measured share: the overlap and the multiple comparisons
-are inside the measurement already.
+The sum overstates rarity by nearly a hundred times. The program therefore shows
+the measured share and not the sum. The overlap and the multiple comparisons are
+already inside the measurement.
 
-The table was taken over five million addresses and checked on five million it
-had not seen. All thirteen cuts agreed within three standard errors. Past the
-last measured point the answer saturates: the sample held ten addresses above
-it, which is enough to say "rarer than this" and not enough to say how much.
+We took the table over five million addresses and checked it on five million
+more that it had not seen. All thirteen cuts agreed inside three standard
+errors. Past the last measured point the answer saturates: the sample held ten
+addresses above it, which is enough to say "rarer than this" and not enough to
+say how much rarer.
 
-## 6. What changed about a run
+## 6. What a run looks like
 
-```
+```text
 $ onion-gen -F contains:abc --min-score 8 -n 5
 ieefv4aao2bt2ms7aj6hylmkhf6fmdmdwyggchxc7cxyabcc65yng3yd.onion
 onion-gen: score 9.1 (few digits 3.3, placement 5.8), about one address in 74
 ...
-onion-gen: 5 hit(s) from 75776 candidates
+onion-gen: 5 hit(s) from 75776 candidates (0 on the device)
 onion-gen: 70 find(s) scored below the threshold and were not written
 onion-gen: best find: oj33abc… at 12.3, about one address in 301
 ```
 
-Three decisions are worth naming.
+Three decisions are worth a name.
 
-**The threshold is off by default.** The cost of being wrong is asymmetric: a
-spare directory can be deleted, a key that was not written is gone for good —
-the same address will not turn up twice.
+**The threshold is off by default.** The cost of a mistake is not symmetrical.
+You can delete a spare directory. A key that the program did not write is gone,
+because the same address will not come up twice.
 
-**Finds turned away are counted apart from finds kept.** Otherwise `--limit 5
---min-score 20` would stop after five rejections and write nothing.
+**The program counts rejected finds apart from kept finds.** Otherwise `--limit
+5 --min-score 20` would stop after five rejections and write nothing.
 
-**The best find is named at the end.** The output is never reordered — finds go
-out as they arrive, and holding them back for the sake of order would lose them
-all on an interrupt — so the best one can be anywhere in a long list.
+**The program names the best find at the end.** It never reorders the output.
+Finds go out as they arrive, because to hold them back for the sake of order
+would lose all of them on an interrupt. The best find can therefore be anywhere
+in a long list.
 
-## 7. Acceptance
+## 7. How this is tested
 
-Scoring runs only on finds, so what is tested is the claim that the search loop
-is untouched: the filters are long enough that nothing is found during a run,
-and any difference is then the hot loop and nothing else. Alternating paired
-measurement against the commit before scoring existed, M1 Pro, eight threads,
-`--compute cpu`, median of ten pairs:
+Scoring runs only on a find, so the test is the claim that the search loop is
+untouched. The run gets filters long enough that it finds nothing, and any
+difference is then the hot loop and nothing else. The test measures four forms:
+a prefix, a substring, a suffix and a regular expression.
 
-| form | before | after | ratio |
-|---|---:|---:|---:|
-| prefix `abcdefghij` | 39.1 M/s | 39.5 M/s | 1.012 |
-| substring `contains:abcdefghij` | 18.0 M/s | 17.9 M/s | 0.998 |
-| suffix `suffix:abcdefghijkzad` | 37.8 M/s | 38.3 M/s | 1.014 |
-| regex `regex:^abcdefghij` | 33.3 M/s | 32.7 M/s | 0.980 |
-
-The ratios fall on both sides of one, which is the result being looked for: had
-the loop gained work, all four would have gone down.
-
-Keys written through the threshold were checked by the independent verifier and
-by tor itself with `DisableNetwork 1`: 5 of 5. The network stayed off and
-nothing was published.
+The independent verifier and tor with `DisableNetwork 1` check the keys that
+pass the threshold. The network stays off, and the program publishes nothing.
 
 ## 8. What is not done, and why
 
-- **No dictionary words.** That needs a word list, and which one is a separate
-  question with a different answer per language. The user already has a filter
-  for saying which words they want.
-- **The output is not reordered.** Finds arrive in a stream; collecting and
-  sorting them would lose everything on an interrupt.
-- **Scoring does not know about the filter.** The placement is passed in as a
-  number. The first version worked it out itself and handed `match_offset` the
-  printed address where it expects packed bytes: both sides are `&[u8]`, so the
-  compiler said nothing and the placement contribution silently went to zero.
+- **No dictionary words.** That needs a word list, and the choice of list is a
+  separate question with a different answer for each language. The user already
+  has a filter for the words that they want.
+- **No reordered output.** Finds arrive in a stream. To collect and sort them
+  would lose all of them on an interrupt.
+- **Scoring does not know about the filter.** The program passes the placement
+  in as a number. Scoring that worked the placement out for itself would need
+  the packed bytes and the printed address, which are both `&[u8]`. The compiler
+  cannot tell them apart, so the boundary keeps them apart instead.

@@ -51,10 +51,10 @@
   <text class="t" x="234" y="182">состояние флота</text>
   <rect class="bxp" x="24" y="316" width="216" height="70" rx="3"/>
   <text class="ts" x="44" y="344">работник 1</text>
-  <text class="tms" x="44" y="366">GPU · 960 млн/с</text>
+  <text class="tms" x="44" y="366">GPU</text>
   <rect class="bxp" x="332" y="316" width="216" height="70" rx="3"/>
   <text class="ts" x="352" y="344">работник 2</text>
-  <text class="tms" x="352" y="366">CPU · 67 млн/с</text>
+  <text class="tms" x="352" y="366">CPU</text>
   <rect class="bxp" x="640" y="316" width="216" height="70" rx="3"/>
   <text class="ts" x="660" y="344">работник N</text>
   <text class="tms" x="660" y="366">…</text>

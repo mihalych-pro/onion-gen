@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="До и после: при нулевом коде на прерывании Job снимает весь флот без единого ключа; при отдельном коде прерывания флот продолжает искать">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="При нулевом коде на прерывании Job снимает весь флот без единого ключа; при отдельном коде прерывания флот продолжает искать">
   <style>
     .bx   { fill:#e3e8ee; stroke:#bcc7d1; stroke-width:1.5 }
     .bxp  { fill:none;    stroke:#bcc7d1; stroke-width:1.5 }
@@ -41,7 +41,7 @@
     <marker id="ars" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahs"/></marker>
     <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="ahw"/></marker>
   </defs>
-  <text class="ts" x="24" y="28">сейчас</text>
+  <text class="ts" x="24" y="28">прерывание даёт 0</text>
   <rect class="bxp" x="24" y="44" width="230" height="52" rx="3"/>
   <text class="t" x="44" y="66">под вытеснен при</text>
   <text class="t" x="44" y="84">сливе узла</text>
@@ -54,9 +54,9 @@
   <rect class="bxw" x="638" y="44" width="218" height="52" rx="3"/>
   <text class="twrn" x="658" y="66">весь флот снят</text>
   <text class="twrn" x="658" y="84">ключей не найдено</text>
-  <text class="tms" x="24" y="132">ошибки нигде нет — задача «завершилась»</text>
+  <text class="tms" x="24" y="132">ошибки нет — задача «завершилась»</text>
   <line class="ln" x1="24" y1="158" x2="856" y2="158"/>
-  <text class="ts" x="24" y="196">после исправления</text>
+  <text class="ts" x="24" y="196">прерывание даёт 4</text>
   <rect class="bxp" x="24" y="212" width="230" height="52" rx="3"/>
   <text class="t" x="44" y="234">под вытеснен при</text>
   <text class="t" x="44" y="252">сливе узла</text>
@@ -80,5 +80,5 @@
   <line class="lns" x1="556" y1="314" x2="632" y2="314" marker-end="url(#ars)"/>
   <rect class="bxs" x="638" y="288" width="218" height="52" rx="3"/>
   <text class="tsig" x="658" y="310">флот снят</text>
-  <text class="tsig" x="658" y="328">это и требовалось</text>
+  <text class="tsig" x="658" y="328">так и должно быть</text>
 </svg>
