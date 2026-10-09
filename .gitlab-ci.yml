@@ -333,7 +333,17 @@ checksums:
   variables:
     GIT_STRATEGY: none
   script:
-    - cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+    - |
+      set -eu
+      cd dist
+      # Both shapes: `SHA256SUMS` checks the whole set, a `.sha256` beside each
+      # binary checks that one. The per-file ones are split out of the list
+      # rather than hashed again, so the two cannot disagree.
+      sha256sum onion-gen-* > SHA256SUMS
+      while read -r hash name; do
+        printf '%s  %s\n' "$hash" "$name" > "$name.sha256"
+      done < SHA256SUMS
+      cat SHA256SUMS
   artifacts:
     name: onion-gen-binaries
     expire_in: 1 week
@@ -417,15 +427,27 @@ tagged-release:
       links:
         - name: onion-gen-linux-amd64
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-linux-amd64
+        - name: onion-gen-linux-amd64.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-linux-amd64.sha256
         - name: onion-gen-linux-arm64
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-linux-arm64
+        - name: onion-gen-linux-arm64.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-linux-arm64.sha256
         - name: onion-gen-darwin-amd64
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-darwin-amd64
+        - name: onion-gen-darwin-amd64.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-darwin-amd64.sha256
         - name: onion-gen-darwin-arm64
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-darwin-arm64
+        - name: onion-gen-darwin-arm64.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-darwin-arm64.sha256
         - name: onion-gen-windows-amd64.exe
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-windows-amd64.exe
+        - name: onion-gen-windows-amd64.exe.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-windows-amd64.exe.sha256
         - name: onion-gen-windows-arm64.exe
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-windows-arm64.exe
+        - name: onion-gen-windows-arm64.exe.sha256
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/onion-gen-windows-arm64.exe.sha256
         - name: SHA256SUMS
           url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/onion-gen/$VERSION/SHA256SUMS

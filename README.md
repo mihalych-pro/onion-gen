@@ -23,14 +23,22 @@ release:
 | Windows, Intel/AMD | [onion-gen-windows-amd64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-amd64.exe) |
 | Windows, ARM | [onion-gen-windows-arm64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-arm64.exe) |
 
+Check what you downloaded. This program writes keys that you cannot replace,
+so it is worth the two extra lines. Each binary has a `.sha256` of its own, so
+you need nothing but the file you took:
+
 ```bash
-curl -LO https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64
+base=https://github.com/mihalych-pro/onion-gen/releases/latest/download
+curl -LO $base/onion-gen-linux-amd64
+curl -LO $base/onion-gen-linux-amd64.sha256
+sha256sum -c onion-gen-linux-amd64.sha256     # macOS: shasum -a 256 -c
 chmod +x onion-gen-linux-amd64 && ./onion-gen-linux-amd64 --version
 ```
 
-Every release carries
-[SHA256SUMS](https://github.com/mihalych-pro/onion-gen/releases/latest/download/SHA256SUMS);
-it is worth checking, since this program writes keys you cannot replace.
+Every release also carries [SHA256SUMS](https://github.com/mihalych-pro/onion-gen/releases/latest/download/SHA256SUMS), which lists all six at
+once. Use it when you took all six; for one file the `.sha256` beside it is
+easier, because checking one name against the full list needs
+`--ignore-missing`, which macOS does not have.
 
 ### Homebrew, on macOS and Linux
 

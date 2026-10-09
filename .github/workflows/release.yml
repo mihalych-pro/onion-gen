@@ -225,7 +225,22 @@ jobs:
           path: dist
 
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist
+          # Both shapes, because they answer different questions. `SHA256SUMS`
+          # checks the whole set in one command. A `.sha256` beside each binary
+          # checks that one binary, which is what somebody who downloaded one
+          # file actually wants: `sha256sum -c` on the list would otherwise
+          # complain about the five files they did not take.
+          #
+          # The per-file ones are split out of the list rather than hashed
+          # again, so the two cannot disagree.
+          sha256sum onion-gen-* > SHA256SUMS
+          while read -r hash name; do
+            printf '%s  %s\n' "$hash" "$name" > "$name.sha256"
+          done < SHA256SUMS
+          cat SHA256SUMS
 
       # Not the automatic notes: those list pull requests, and this project
       # commits straight to main.

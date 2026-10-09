@@ -22,14 +22,23 @@
 | Windows, Intel/AMD | [onion-gen-windows-amd64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-amd64.exe) |
 | Windows, ARM | [onion-gen-windows-arm64.exe](https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-windows-arm64.exe) |
 
+Проверьте скачанное. Программа пишет ключи, которые не заменишь, так что две
+лишние строки того стоят. У каждого бинарника есть собственный `.sha256`,
+поэтому ничего кроме взятого файла не нужно:
+
 ```bash
-curl -LO https://github.com/mihalych-pro/onion-gen/releases/latest/download/onion-gen-linux-amd64
+base=https://github.com/mihalych-pro/onion-gen/releases/latest/download
+curl -LO $base/onion-gen-linux-amd64
+curl -LO $base/onion-gen-linux-amd64.sha256
+sha256sum -c onion-gen-linux-amd64.sha256     # на macOS: shasum -a 256 -c
 chmod +x onion-gen-linux-amd64 && ./onion-gen-linux-amd64 --version
 ```
 
-К каждому релизу прилагается
+К каждому релизу прилагается и
 [SHA256SUMS](https://github.com/mihalych-pro/onion-gen/releases/latest/download/SHA256SUMS)
-— проверить стоит: эта программа пишет ключи, которые нельзя восстановить.
+со всеми шестью сразу. Он удобен, когда вы взяли все шесть; для одного файла
+проще `.sha256` рядом с ним, потому что сверка одного имени с полным списком
+требует `--ignore-missing`, которого на macOS нет.
 
 ### Homebrew, на macOS и Linux
 
