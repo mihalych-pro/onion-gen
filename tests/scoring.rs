@@ -9,6 +9,7 @@ use onion_gen::run::{self, RunOptions};
 use onion_gen::score;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 
 fn temp(name: &str) -> PathBuf {
@@ -126,7 +127,11 @@ fn the_run_names_its_best_find() {
 /// searches forever, and being interrupted is the only way such a run ends.
 /// That is also the case worth checking — the summary of an interrupted run is
 /// the one somebody reads.
+///
+/// Unix only: Windows has no signal one process can send another to ask for an
+/// orderly stop, so there is no way to produce the summary this checks.
 #[test]
+#[cfg(unix)]
 fn a_run_without_finds_has_no_best() {
     let out = temp("empty");
     let _ = fs::remove_dir_all(&out);
@@ -172,6 +177,7 @@ fn a_run_without_finds_has_no_best() {
 }
 
 /// `SIGTERM`, without pulling in a crate for one call.
+#[cfg(unix)]
 unsafe fn libc_kill(pid: i32) {
     extern "C" {
         fn kill(pid: i32, sig: i32) -> i32;
@@ -179,6 +185,7 @@ unsafe fn libc_kill(pid: i32) {
     unsafe { kill(pid, 15) };
 }
 
+#[cfg(unix)]
 fn binary() -> PathBuf {
     let mut path = std::env::current_exe().expect("a path to this test");
     path.pop();

@@ -25,7 +25,7 @@ vars:
 
 tasks:
   default:
-    desc: "What you usually want before committing: format, lint both architectures, test."
+    desc: "What you usually want before committing: format, lint, link for windows, test."
     cmds:
       - task: fmt
       - task: lint
@@ -33,6 +33,9 @@ tasks:
       # machine, so running clippy once says nothing about the other half of
       # the code. CI sees it; this is how to see it first.
       - task: lint:x86
+      # The same argument for the other platform: a unix-only call compiles
+      # everywhere and fails at the link step on windows alone.
+      - task: check:windows
       - task: test
 
   build:
@@ -98,6 +101,20 @@ tasks:
           echo "local accesses in $k: $spills"
           test "$spills" -le 64
         done
+
+  check:windows:
+    desc: Lint and link the tests for windows from any machine. Catches what only CI would find.
+    cmds:
+      # Two different gaps, so two commands. Clippy finds an import left unused
+      # once its only caller went behind cfg(unix). Linking finds the call that
+      # caused that in the first place: `cargo check` never reaches the linker,
+      # and a missing symbol such as `kill` fails there and nowhere else.
+      - |
+        wrapper=$(ls ~/Library/Caches/cargo-zigbuild/*/wrappers/*/zigcc-x86_64-pc-windows-gnu*.sh 2>/dev/null | head -1)
+        [ -n "$wrapper" ] || wrapper=$(ls ~/.cache/cargo-zigbuild/*/wrappers/*/zigcc-x86_64-pc-windows-gnu*.sh 2>/dev/null | head -1)
+        CC_x86_64_pc_windows_gnu="$wrapper" \
+          cargo clippy --all-targets --release --target {{.WINDOWS_TARGET}} -- -D warnings
+      - cargo zigbuild --release --tests --target {{.WINDOWS_TARGET}}
 
   cross:setup:
     desc: Install what cross-building needs, once per machine.
