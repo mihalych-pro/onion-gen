@@ -154,6 +154,17 @@ tasks:
       - scp -q target/{{.LINUX_DIR}}/release/onion-gen $ONION_GEN_LINUX_HOST:{{.REMOTE_DIR}}/onion-gen
       - ssh $ONION_GEN_LINUX_HOST 'cd {{.REMOTE_DIR}} && chmod +x onion-gen && ./onion-gen -n 1 -d og-check -F abcd'
 
+  test:windows:
+    desc: Run the whole suite on the windows machine. Needs ONION_GEN_WINDOWS_HOST.
+    preconditions:
+      - sh: '[ -n "$ONION_GEN_WINDOWS_HOST" ]'
+        msg: set ONION_GEN_WINDOWS_HOST=user@host in the environment or .env
+    cmds:
+      # `task check:windows` only links the tests. This one runs them, which is
+      # the difference between "no symbol is missing" and "the program behaves
+      # on that platform".
+      - ./scripts/test-on-windows.sh {{.WINDOWS_TARGET}}
+
   ship:windows:
     desc: Send the windows binary to the test machine and prove it runs there.
     preconditions:

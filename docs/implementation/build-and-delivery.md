@@ -80,12 +80,19 @@ inside it.
 
 ## 5. Testing on Windows without Rust on the machine
 
-`cargo zigbuild --release --tests --target x86_64-pc-windows-gnu` produces the
-test executables. Copy them over and run them there.
+`task test:windows` builds the test executables, sends them to the machine in
+`ONION_GEN_WINDOWS_HOST` and runs them there. It needs no Rust on that machine
+and no interpreter: nothing in the suite calls an outside program.
 
-Every test runs that way. Nothing in the suite calls an outside program, so
-there is no interpreter to install and no path fixed at build time to go
-missing on another machine.
+The tests find the program from their own path, so the layout on the remote
+mirrors a cargo target directory — harnesses in `deps`, the program one level
+above them. `scripts/test-on-windows.sh` does that, and `task check:windows`
+only links the tests, which is a weaker question: a prose line in a `--json`
+stream links perfectly well and still breaks the platform.
+
+Five tests do not run there, and that is deliberate. Signals, and POSIX
+permissions, do not exist on Windows, so the tests for them are behind
+`cfg(unix)`.
 
 ## 6. Continuous integration
 
