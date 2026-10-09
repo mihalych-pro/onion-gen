@@ -1,6 +1,6 @@
 [package]
 name = "onion-gen"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.99"
 description = "A vanity address generator for Tor Onion Service v3"
@@ -47,7 +47,12 @@ cudarc = { version = "0.19", default-features = false, features = [
 # The portable device path: one WGSL kernel reaching Vulkan, Metal and DX12.
 # Where the vendor path also works it is the faster of the two, and it is the
 # only one on AMD, Intel and every Mac.
-wgpu = { version = "30", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
+wgpu = { version = "30", default-features = false, features = [
+    "wgsl",
+    "vulkan",
+    "metal",
+    "dx12",
+] }
 # The last resort among device paths: where neither the portable path nor the
 # vendor one answers, this one might. It opens its library at run time like the
 # others, so a binary built here still runs where OpenCL is absent.
@@ -91,7 +96,14 @@ regex-syntax = { version = "0.8", default-features = false }
 #
 # `tokio` is the async runtime the network side runs on; the search itself
 # stays on its own threads and never touches it.
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "time", "signal", "io-util"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "time",
+    "signal",
+    "io-util",
+] }
 # HTTP on top of tokio, and nothing on top of that. Measured against the
 # alternative: `axum` with `reqwest` costs 52 crates more and saves some
 # twenty-odd lines, and among those crates is the whole ICU stack, pulled in
