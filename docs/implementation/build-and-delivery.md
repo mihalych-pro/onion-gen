@@ -83,10 +83,9 @@ inside it.
 `cargo zigbuild --release --tests --target x86_64-pc-windows-gnu` produces the
 test executables. Copy them over and run them there.
 
-One test cannot run that way. `end_to_end` calls the Python verifier through a
-path fixed at build time, and that path does not exist on another machine. The
-test skips with a message, and the message is printed and not swallowed. A test
-that quietly checks nothing is worse than one that fails.
+Every test runs that way. Nothing in the suite calls an outside program, so
+there is no interpreter to install and no path fixed at build time to go
+missing on another machine.
 
 ## 6. Continuous integration
 

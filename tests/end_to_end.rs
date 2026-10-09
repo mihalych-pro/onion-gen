@@ -8,10 +8,9 @@
 //! here rather than in someone's live service.
 
 use onion_gen::batch::{BatchEngine, CHAIN_STEP};
-use onion_gen::{curve, key, output};
+use onion_gen::{curve, key, output, verify};
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 fn seed_from(n: u64) -> [u8; 32] {
     let mut b = [0u8; 32];
@@ -86,36 +85,29 @@ fn found_keys_pass_the_independent_verifier() {
         assert!(name.ends_with(".onion"));
     }
 
-    let script =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/verify/verify-onion-address.py");
-    let result = Command::new(&script).arg(&out).arg("--all").output();
+    // Checked against two implementations that are not ours, which is the
+    // whole point: our arithmetic confirming our arithmetic would prove
+    // nothing. `secret produces public` goes through `curve25519-dalek`, and
+    // `arti agrees` through `tor-hscrypto`, the Tor Project's own code.
+    let reports = verify::tree(&out).expect("the tree is readable");
+    assert_eq!(
+        reports.len(),
+        3,
+        "expected three reports, got {}",
+        reports.len()
+    );
 
-    match result {
-        Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            eprintln!("{stdout}");
+    for report in &reports {
+        assert!(report.ok(), "the verifier rejected a key:\n{report}");
+        // Naming the two checks rather than trusting `ok()`: a verifier that
+        // quietly stopped making one of them would still report success.
+        for check in ["secret produces public", "arti agrees"] {
             assert!(
-                o.status.success(),
-                "the verifier rejected the keys:\n{stdout}{}",
-                String::from_utf8_lossy(&o.stderr)
-            );
-            assert!(
-                stdout.contains("failed: 0"),
-                "the verifier reported failures:\n{stdout}"
+                report.passed.contains(&check),
+                "{check} did not run for {}:\n{report}",
+                report.path.display()
             );
         }
-        // The path is baked in at build time, so a binary cross-compiled on
-        // one machine and run on another will not find the script. Skipping
-        // loudly beats failing: the verifier agreeing is checked wherever the
-        // repository is present, which is every machine that builds.
-        Err(e) if !script.exists() => {
-            eprintln!(
-                "SKIPPED: the verifier script is not at {} ({e}); \
-                 this binary was built elsewhere",
-                script.display()
-            );
-        }
-        Err(e) => panic!("could not run {}: {e}", script.display()),
     }
 
     fs::remove_dir_all(&out).unwrap();

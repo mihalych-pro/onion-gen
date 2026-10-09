@@ -102,10 +102,15 @@ is worth its full multiplier.
 - **Byte-for-byte output compatibility.** The writer takes 16 key directories
   produced by `mkp224o`, and all three files match exactly, in
   `tests/mkp224o_compat.rs`.
-- **An independent verifier confirms the keys.** `verify-onion-address.py`
-  shares no code with the generator. It computes the address again from the
-  public key, and the public key again from the secret scalar. See
-  `tests/end_to_end.rs`.
+- **Two implementations that are not ours confirm the keys.**
+  `curve25519-dalek` derives the public key from the secret scalar, and
+  `tor-hscrypto`, the Tor Project's own code, reads the key back out of the
+  address. Our arithmetic confirming our arithmetic would prove nothing. See
+  `tests/end_to_end.rs`, which runs both through `verify::tree`.
+- **A third verifier, for a key directory in hand.**
+  `scripts/verify/verify-onion-address.py` shares no code and no language with
+  the generator. It is not part of the suite; run it with
+  `task verify:keys:python`.
 - **tor accepts the keys.** A service directory that holds only
   `hs_ed25519_secret_key` goes to tor with `DisableNetwork 1`. tor regenerates
   the public key and the `hostname` file, and it produces the same address that
