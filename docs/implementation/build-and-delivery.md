@@ -97,10 +97,14 @@ permissions, do not exist on Windows, so the tests for them are behind
 ## 6. Continuous integration
 
 `.github/workflows/ci.yml` runs formatting, clippy and the tests natively on
-Linux, Windows and macOS. It builds the binaries on one Linux runner, except
-the macOS ones: `wgpu` links Apple frameworks that exist in no other SDK, so a
-Mac builds those. `.gitlab-ci.yml` does the rest on Linux runners only, which
-is possible because zig builds every target from there.
+Linux, Windows and macOS. `.gitlab-ci.yml` does the rest on Linux runners only,
+which is possible because zig builds every target from there.
+
+Each binary is built by a job of its own, six in all. Two targets share
+nothing — a different triple means a different build of every dependency — so
+to run them apart costs no more and finishes sooner. The macOS pair runs on a
+Mac in the GitHub workflow: `wgpu` links Apple frameworks that exist in no
+other SDK.
 
 Both pipelines compile the CUDA kernel in a job of its own and pass the PTX
 down as an artefact. Every job below sets `ONION_GEN_KERNEL_PTX` and stays on

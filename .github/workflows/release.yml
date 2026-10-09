@@ -59,16 +59,31 @@ jobs:
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
   linux:
-    name: binaries for linux
+    name: binaries for linux ${{ matrix.arch }}
+    # One target in each job. They share nothing — a different triple means a
+    # different build of every dependency — so running them apart costs
+    # nothing and finishes in half the time.
     needs: kernel
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            triple: x86_64-unknown-linux-gnu
+            floor: ".2.28"
+            out: onion-gen-linux-amd64
+          - arch: arm64
+            triple: aarch64-unknown-linux-gnu
+            floor: ".2.28"
+            out: onion-gen-linux-arm64
     steps:
       - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+          targets: ${{ matrix.triple }}
 
       - uses: Swatinem/rust-cache@v2
 
@@ -93,39 +108,51 @@ jobs:
       # `.2.28` is the oldest glibc they will run against: RHEL 8 and its
       # rebuilds, supported to May 2029.
       - name: Build
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          FLOOR: ${{ matrix.floor }}
+          OUT: ${{ matrix.out }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          build() {  # <rust triple> <output name>
-            echo "::group::$2"
-            cargo zigbuild --release --target "$1"
-            triple="${1%%.*}"
-            src="target/${triple}/release/onion-gen"
-            [ -f "$src" ] || src="${src}.exe"
-            cp "$src" "dist/$2"
-            echo "::endgroup::"
-          }
-          build x86_64-unknown-linux-gnu.2.28   onion-gen-linux-amd64
-          build aarch64-unknown-linux-gnu.2.28  onion-gen-linux-arm64
+          cargo zigbuild --release --target "${TRIPLE}${FLOOR}"
+          src="target/$TRIPLE/release/onion-gen"
+          [ -f "$src" ] || src="${src}.exe"
+          cp "$src" "dist/$OUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: binaries-linux
+          name: binary-${{ matrix.out }}
           if-no-files-found: error
           retention-days: 7
           path: dist/*
 
   windows:
-    name: binaries for windows
+    name: binaries for windows ${{ matrix.arch }}
+    # One target in each job. They share nothing — a different triple means a
+    # different build of every dependency — so running them apart costs
+    # nothing and finishes in half the time.
     needs: kernel
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            triple: x86_64-pc-windows-gnu
+            floor: ""
+            out: onion-gen-windows-amd64.exe
+          - arch: arm64
+            triple: aarch64-pc-windows-gnullvm
+            floor: ""
+            out: onion-gen-windows-arm64.exe
     steps:
       - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-gnu, aarch64-pc-windows-gnullvm
+          targets: ${{ matrix.triple }}
 
       - uses: Swatinem/rust-cache@v2
 
@@ -147,39 +174,50 @@ jobs:
           tool: cargo-zigbuild@0.23.4
 
       - name: Build
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          FLOOR: ${{ matrix.floor }}
+          OUT: ${{ matrix.out }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          build() {  # <rust triple> <output name>
-            echo "::group::$2"
-            cargo zigbuild --release --target "$1"
-            triple="${1%%.*}"
-            src="target/${triple}/release/onion-gen"
-            [ -f "$src" ] || src="${src}.exe"
-            cp "$src" "dist/$2"
-            echo "::endgroup::"
-          }
-          build x86_64-pc-windows-gnu       onion-gen-windows-amd64.exe
-          build aarch64-pc-windows-gnullvm  onion-gen-windows-arm64.exe
+          cargo zigbuild --release --target "${TRIPLE}${FLOOR}"
+          src="target/$TRIPLE/release/onion-gen"
+          [ -f "$src" ] || src="${src}.exe"
+          cp "$src" "dist/$OUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: binaries-windows
+          name: binary-${{ matrix.out }}
           if-no-files-found: error
           retention-days: 7
           path: dist/*
 
   macos:
-    name: binaries for macos
+    name: binaries for macos ${{ matrix.arch }}
+    # On a Mac, not through zig: `wgpu` links Apple frameworks found only in
+    # the macOS SDK. One target in each job, as above.
     needs: kernel
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            triple: x86_64-apple-darwin
+            out: onion-gen-darwin-amd64
+          - arch: arm64
+            triple: aarch64-apple-darwin
+            out: onion-gen-darwin-arm64
     steps:
       - uses: actions/checkout@v7
 
       - name: Install the toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
+          targets: ${{ matrix.triple }}
+
+      - uses: Swatinem/rust-cache@v2
 
       - uses: actions/download-artifact@v8
         with:
@@ -190,20 +228,18 @@ jobs:
         run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
 
       - name: Build
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          OUT: ${{ matrix.out }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          for pair in "x86_64-apple-darwin amd64" "aarch64-apple-darwin arm64"; do
-            set -- $pair
-            echo "::group::$2"
-            cargo build --release --target "$1"
-            cp "target/$1/release/onion-gen" "dist/onion-gen-darwin-$2"
-            echo "::endgroup::"
-          done
+          cargo build --release --target "$TRIPLE"
+          cp "target/$TRIPLE/release/onion-gen" "dist/$OUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: binaries-macos
+          name: binary-${{ matrix.out }}
           if-no-files-found: error
           retention-days: 7
           path: dist/*
@@ -220,7 +256,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: binaries-*
+          pattern: binary-*
           merge-multiple: true
           path: dist
 
@@ -322,7 +358,8 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: binaries-linux
+          pattern: binary-onion-gen-linux-*
+          merge-multiple: true
           path: dist
 
       - name: What goes in
