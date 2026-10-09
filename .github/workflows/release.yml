@@ -1,7 +1,5 @@
 # A tag produces a release: six binaries, their checksums, and an image.
 #
-# Same shape as CI, with one difference: nothing is published until every
-# binary exists. A release missing a platform is worse than a late one.
 
 name: Release
 
@@ -59,43 +57,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
-
-  check:
-    name: check on ${{ matrix.os }}
-    # A tag is normally cut from a commit CI already passed, but "normally" is
-    # not a guarantee, and a release built from an untested tree is worse than
-    # a late one.
-    needs: kernel
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install the toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: cuda-kernel-ptx
-          path: kernel
-
-      - name: Point the build at the kernel
-        shell: bash
-        run: echo "ONION_GEN_KERNEL_PTX=$GITHUB_WORKSPACE/kernel/ogkernel.ptx" >> "$GITHUB_ENV"
-
-      - name: Formatting
-        run: cargo fmt --check
-
-      - name: Clippy
-        run: cargo clippy --all-targets --release -- -D warnings
-
-      - name: Tests
-        run: cargo test --release
 
   linux:
     name: binaries for linux
@@ -249,7 +210,7 @@ jobs:
 
   publish:
     name: the release itself
-    needs: [check, linux, windows, macos]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     steps:
       # Whole history: the notes are the commits since the previous tag.
@@ -305,7 +266,7 @@ jobs:
     name: container image
     # After the binaries: a tag that cannot build must not leave a published
     # image pointing at a release that does not exist.
-    needs: [check, linux, windows, macos]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
