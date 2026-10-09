@@ -57,6 +57,7 @@ jobs:
         with:
           name: cuda-kernel-ptx
           if-no-files-found: error
+          retention-days: 7
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
   check:
@@ -150,6 +151,7 @@ jobs:
         with:
           name: binaries-linux
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   windows:
@@ -203,6 +205,7 @@ jobs:
         with:
           name: binaries-windows
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   macos:
@@ -241,6 +244,7 @@ jobs:
         with:
           name: binaries-macos
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   publish:

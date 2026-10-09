@@ -9,16 +9,48 @@
 name: CI
 
 on:
+  # Only main. A branch is built through its pull request, which tests the
+  # result of merging it rather than the branch on its own. A branch with no
+  # pull request is not built, which is the cost of this arrangement.
   push:
-    branches: ["**"]
+    branches: [main]
+  # `labeled` is what lets a maintainer start a run on somebody else's pull
+  # request. Without the label nothing below runs for a fork.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+# One run for each branch or pull request. A new push cancels the run it
+# replaces, so an abandoned one stops spending a runner and stops leaving
+# artifacts behind.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Nothing starts until this passes.
+  #
+  # A push to main passes. A pull request from a branch of this repository
+  # passes, because only somebody with write access can push such a branch. A
+  # pull request from a fork passes only with the label.
+  #
+  # Labels need the triage role or above, which an outside contributor does not
+  # have, so only a maintainer can start a run for a fork.
+  gate:
+    name: cleared to run
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ok-to-test')
+    steps:
+      - run: echo "cleared"
+
   kernel:
     name: GPU kernel
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,6 +90,7 @@ jobs:
         with:
           name: cuda-kernel-ptx
           if-no-files-found: error
+          retention-days: 7
           path: cuda-kernel/target/nvptx64-nvidia-cuda/release/ogkernel.ptx
 
   check:
@@ -155,6 +188,7 @@ jobs:
         with:
           name: binaries-linux
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   windows:
@@ -208,6 +242,7 @@ jobs:
         with:
           name: binaries-windows
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   macos:
@@ -250,6 +285,7 @@ jobs:
         with:
           name: binaries-macos
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   checksums:
@@ -273,6 +309,7 @@ jobs:
         with:
           name: onion-gen-binaries
           if-no-files-found: error
+          retention-days: 7
           path: dist/*
 
   image:
@@ -307,7 +344,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` only from main, a tag per branch, the commit always.
+      # Only main publishes, so in practice this is `main`, `latest` and the
+      # commit. The pull-request tag is computed but never pushed: the step
+      # below publishes on a push alone.
       - name: What to tag it
         id: meta
         uses: docker/metadata-action@v6
