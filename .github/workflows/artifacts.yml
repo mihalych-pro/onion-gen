@@ -1,0 +1,84 @@
+# Keeps only the artifacts that are still worth keeping.
+#
+# This is a workflow of its own because CI cannot do it. A pull request from a
+# fork gets a read-only token, so the run that made the artifacts cannot delete
+# any. `workflow_run` and `pull_request_target` both run from the default
+# branch with the repository's own token, which can.
+#
+# Neither job checks out any code. `pull_request_target` carries write
+# permissions, and code from the pull request must never run under it.
+
+name: Artifacts
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  # After every CI run: drop what the runs before it left for the same branch.
+  # What remains is the artifacts of the newest run, on main and on a branch
+  # alike.
+  older:
+    name: drop superseded artifacts
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete artifacts of earlier runs of this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.workflow_id }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          # Two forks can use the same branch name, so the name alone is not
+          # enough to tell one pull request from another.
+          FROM: ${{ github.event.workflow_run.head_repository.full_name }}
+          CURRENT: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          runs=$(gh api --paginate -X GET "repos/$REPO/actions/workflows/$WORKFLOW/runs" \
+            -f branch="$BRANCH" -f per_page=100 \
+            --jq ".workflow_runs[]
+                  | select(.head_repository.full_name == \"$FROM\")
+                  | select(.id < $CURRENT)
+                  | .id")
+          echo "runs to clear: $(echo "$runs" | grep -c . || true)"
+          for run in $runs; do
+            for art in $(gh api --paginate "repos/$REPO/actions/runs/$run/artifacts" \
+                          --jq '.artifacts[] | select(.expired == false) | .id'); do
+              gh api -X DELETE "repos/$REPO/actions/artifacts/$art" && echo "deleted $art from run $run"
+            done
+          done
+
+  # When a pull request closes, everything it produced goes, merged or not.
+  closed:
+    name: drop a closed pull request's artifacts
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete every artifact from this pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          FROM: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          runs=$(gh api --paginate -X GET "repos/$REPO/actions/runs" \
+            -f branch="$BRANCH" -f per_page=100 \
+            --jq ".workflow_runs[]
+                  | select(.head_repository.full_name == \"$FROM\")
+                  | .id")
+          echo "runs to clear: $(echo "$runs" | grep -c . || true)"
+          for run in $runs; do
+            for art in $(gh api --paginate "repos/$REPO/actions/runs/$run/artifacts" \
+                          --jq '.artifacts[] | select(.expired == false) | .id'); do
+              gh api -X DELETE "repos/$REPO/actions/artifacts/$art" && echo "deleted $art from run $run"
+            done
+          done
