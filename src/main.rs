@@ -76,11 +76,20 @@ fn main() -> ExitCode {
         return run_guess(args, &config, &filters);
     }
 
+    // The same warning in whichever shape the caller reads. Under `--json`
+    // every line of the stream has to parse, and a prose line here would break
+    // a parser rather than only this program's own tests.
     if !output::enforces_permissions() {
-        eprintln!(
-            "onion-gen: warning: this platform does not apply POSIX permissions; \
-             the secret key will not be restricted to its owner"
-        );
+        const WHY: &str = "this platform does not apply POSIX permissions; \
+                           the secret key will not be restricted to its owner";
+        if config.json {
+            eprintln!(
+                "{}",
+                serde_json::json!({ "event": "warning", "warning": "permissions", "message": WHY })
+            );
+        } else {
+            eprintln!("onion-gen: warning: {WHY}");
+        }
     }
 
     // Prose diagnostics and machine-readable output are two answers to the
